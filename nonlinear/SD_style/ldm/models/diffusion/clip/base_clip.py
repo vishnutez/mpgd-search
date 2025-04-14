@@ -54,7 +54,22 @@ class CLIPEncoder(nn.Module):
         img = torch.unsqueeze(img, 0)
         img = img.cuda()
         self.ref = img
+
     
+    # def get_gram_matrix_residual(self, im1):
+    #     im1 = torch.nn.functional.interpolate(im1, size=(224, 224), mode='bicubic')
+    #     im1 = self.preprocess(im1)
+
+    #     f1, feats1 = self.clip_model.encode_image_with_features(im1)
+    #     f2, feats2 = self.clip_model.encode_image_with_features(self.ref)
+        
+    #     feat1 = feats1[2][1:, 0, :]
+    #     feat2 = feats2[2][1:, 0, :]
+    #     gram1 = torch.mm(feat1.t(), feat1)
+    #     gram2 = torch.mm(feat2.t(), feat2)
+    #     return gram1 - gram2
+
+
     def get_gram_matrix_residual(self, im1):
         im1 = torch.nn.functional.interpolate(im1, size=(224, 224), mode='bicubic')
         im1 = self.preprocess(im1)
@@ -62,10 +77,40 @@ class CLIPEncoder(nn.Module):
         f1, feats1 = self.clip_model.encode_image_with_features(im1)
         f2, feats2 = self.clip_model.encode_image_with_features(self.ref)
         
-        feat1 = feats1[2][1:, 0, :]
-        feat2 = feats2[2][1:, 0, :]
-        gram1 = torch.mm(feat1.t(), feat1)
-        gram2 = torch.mm(feat2.t(), feat2)
+        feat1 = feats1[2][1:, :, :]
+        feat2 = feats2[2][1:, :, :]
+
+        feat1_mat = feat1.permute(1, 0, 2)
+        feat2_mat = feat2.permute(1, 0, 2)
+
+        feat1_mat_t = feat1_mat.permute(0, 2, 1)
+        feat2_mat_t = feat2_mat.permute(0, 2, 1)
+
+        # multiply the two matrices broadcasting the dimension
+        gram1 = torch.bmm(feat1_mat_t, feat1_mat)
+        gram2 = torch.bmm(feat2_mat_t, feat2_mat)
+        return gram1 - gram2
+
+
+    def get_gram_matrix_residual_im1_im2(self, im1, im2):
+        im1 = torch.nn.functional.interpolate(im1, size=(224, 224), mode='bicubic')
+        im1 = self.preprocess(im1)
+
+        f1, feats1 = self.clip_model.encode_image_with_features(im1)
+        f2, feats2 = self.clip_model.encode_image_with_features(im2)
+        
+        feat1 = feats1[2][1:, :, :]
+        feat2 = feats2[2][1:, :, :]
+
+        feat1_mat = feat1.permute(1, 0, 2)
+        feat2_mat = feat2.permute(1, 0, 2)
+
+        feat1_mat_t = feat1_mat.permute(0, 2, 1)
+        feat2_mat_t = feat2_mat.permute(0, 2, 1)
+
+        # multiply the two matrices broadcasting the dimension
+        gram1 = torch.bmm(feat1_mat_t, feat1_mat)
+        gram2 = torch.bmm(feat2_mat_t, feat2_mat)
         return gram1 - gram2
     
     def get_clip_score(self, image, text):
@@ -76,5 +121,6 @@ class CLIPEncoder(nn.Module):
 if __name__ == "__main__":
     m = CLIPEncoder().cuda()
     im1 = torch.randn((1, 3, 224, 224)).cuda()
-    im2 = torch.randn((1, 3, 224, 224)).cuda()
-    m.get_gram_matrix_residual(im1, im2)
+    im2 = torch.randn((2, 3, 224, 224)).cuda()
+    gram_res = m.get_gram_matrix_residual_im1_im2(im1, im2)
+    print('gram res shape: ', gram_res.shape)

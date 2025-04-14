@@ -13,6 +13,8 @@ import time
 from pytorch_lightning import seed_everything
 from torch import autocast
 from contextlib import contextmanager, nullcontext
+import csv  # Add CSV import
+from datetime import datetime  # Add datetime import
 
 from ldm.util import instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
@@ -255,12 +257,16 @@ def main():
         opt.ckpt = "models/ldm/text2img-large/model.ckpt"
         opt.outdir = "outputs/txt2img-samples-laion400m"
 
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+    print('Device:', device)
+
     seed_everything(opt.seed)
 
     config = OmegaConf.load(f"{opt.config}")
     model = load_model_from_config(config, f"{opt.ckpt}")
 
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    
     model = model.to(device)
 
     if opt.dpm_solver:
@@ -278,9 +284,11 @@ def main():
     wm_encoder = WatermarkEncoder()
     wm_encoder.set_watermark('bytes', wm.encode('utf-8'))
 
-    opt.n_samples = 1 # current version only supprt batchsize 1
+    opt.n_samples = 2 # current version only supprt batchsize 1
     batch_size = opt.n_samples
-    sample_path = os.path.join(outpath, f"ddim{opt.ddim_steps}_tt{opt.tt}_rho{opt.rho}")
+    # Get current timestamp
+    timestamp = datetime.now().strftime("%y_%m_%d_%H_%M_%S")
+    sample_path = os.path.join(outpath, f"{timestamp}_ddim{opt.ddim_steps}_tt{opt.tt}_rho{opt.rho}")
     os.makedirs(sample_path, exist_ok=True)
     base_count = len(os.listdir(sample_path))
     grid_count = len(os.listdir(outpath)) - 1
@@ -296,6 +304,8 @@ def main():
         for j in range(opt.n_iter):
             tic = time.time()
             for filename in tqdm(sorted(os.listdir(opt.style_ref_path))):
+                print('*' * 20)
+                seed_everything(opt.seed)  # TODO: remove this line for different seeds in each generation
                 if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')):
                     style_ref_img_path = os.path.join(opt.style_ref_path, filename)
                     image_encoder.calc_ref_feat(style_ref_img_path)
@@ -307,7 +317,7 @@ def main():
                         prompts = list(prompts)
                     c = model.get_learned_conditioning(prompts)
                     shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
-                    samples_ddim, intermediates = sampler.sample(S=opt.ddim_steps,
+                    samples_ddim, intermediates, style_loss = sampler.sample(S=opt.ddim_steps,
                                                         conditioning=c,
                                                         batch_size=opt.n_samples,
                                                         shape=shape,
@@ -332,8 +342,24 @@ def main():
                         x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
                         img = Image.fromarray(x_sample.astype(np.uint8))
                         img = put_watermark(img, wm_encoder)
+                        
+                        # Save image with timestamp in filename
                         img.save(os.path.join(sample_path, f"{'.'.join(filename.split('.')[:-1])}_{j}_{i}.png"))
                         base_count += 1
+                    
+                    # Save style_loss to CSV file in append mode
+                    csv_path = os.path.join(sample_path, "style_loss_log.csv")
+                    file_exists = os.path.isfile(csv_path)
+                    
+                    with open(csv_path, 'a', newline='') as csvfile:
+                        csv_writer = csv.writer(csvfile)
+                        # Write header if file doesn't exist
+                        if not file_exists:
+                            csv_writer.writerow(['style_image', 'iteration', 'style_loss'])
+                        
+                        # Convert to scalar if it's a tensor
+                        loss_value = style_loss.item() if isinstance(style_loss, torch.Tensor) else style_loss
+                        csv_writer.writerow([filename, j, loss_value])
 
             toc = time.time()
 

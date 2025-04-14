@@ -111,7 +111,7 @@ class DDIMSampler(object):
 
         self.image_encoder = image_encoder
 
-        samples, intermediates = self.ddim_sampling(conditioning, size,
+        samples, intermediates, style_loss = self.ddim_sampling(conditioning, size,
                                                     callback=callback,
                                                     img_callback=img_callback,
                                                     quantize_denoised=quantize_x0,
@@ -128,7 +128,7 @@ class DDIMSampler(object):
                                                     tt=tt,
                                                     rho=rho,
                                                     )
-        return samples, intermediates
+        return samples, intermediates, style_loss
 
     # @torch.no_grad()
     def ddim_sampling(self, cond, shape,
@@ -159,6 +159,7 @@ class DDIMSampler(object):
         self.total_steps = total_steps
 
         count1 = 0
+        current_style_loss = 0  # Initialize style_loss tracker
 
         for i, step in enumerate(iterator):
 
@@ -177,7 +178,12 @@ class DDIMSampler(object):
                                     unconditional_guidance_scale=unconditional_guidance_scale,
                                     unconditional_conditioning=unconditional_conditioning, tt=tt, rho=rho)
 
-            img, pred_x0 = outs
+            img, pred_x0, style_loss = outs
+            current_style_loss = style_loss
+            
+            # Update tqdm description with style_loss every 10 steps
+            if i % 10 == 0:
+                iterator.set_description(f"DDIM Sampler - Style Loss: {current_style_loss:.6f}")
 
             count1 += 1
             pred_x0_temp = self.model.decode_first_stage(pred_x0)
@@ -197,7 +203,7 @@ class DDIMSampler(object):
             intermediates['x_inter'].append(img)
             intermediates['pred_x0'].append(pred_x0)
 
-        return img, intermediates
+        return img, intermediates, current_style_loss
       
     @torch.no_grad()
     def p_sample_ddim_conditional_x0(self, x, c, t, index, repeat_noise=False, use_original_steps=False, quantize_denoised=False,
@@ -219,6 +225,8 @@ class DDIMSampler(object):
             repeat = 1 
         start = 0.7*self.total_steps
         end = 0.3*self.total_steps
+
+        norm = 0
 
 
         for j in range(repeat):
@@ -258,12 +266,18 @@ class DDIMSampler(object):
             
                 if start > index >= end:
                     D_x0_t = self.model.decode_first_stage(pred_x0)
-                    residual = self.image_encoder.get_gram_matrix_residual(D_x0_t)
-                    norm = torch.linalg.norm(residual)
-                    norm_grad = torch.autograd.grad(outputs=norm, inputs=pred_x0)[0]
+                    residual = self.image_encoder.get_gram_matrix_residual(D_x0_t)  # B, d, d
+                    norm = torch.linalg.norm(residual, axis=(-1, -2)) # compute the norm
+                    norm_grad = torch.autograd.grad(outputs=norm.sum(), inputs=pred_x0)[0]
                     # in the implementatino for our paper we do have the "/ a_prev.sqrt()" part included, but we also found that in practice without it also lead to good results
                     # with and without "/ a_prev.sqrt()" may require different rho, but usually picking something between 15 to 30 is ok
                     rho = (correction * correction).mean().sqrt().item() * unconditional_guidance_scale / (norm_grad * norm_grad).mean().sqrt().item() * rho # / a_prev.sqrt()
+                
+                else:
+                    with torch.no_grad():
+                        D_x0_t = self.model.decode_first_stage(pred_x0)
+                        residual = self.image_encoder.get_gram_matrix_residual(D_x0_t)
+                        norm = torch.linalg.norm(residual, axis=(-1, -2)) # still compute the norm for logging
 
             if start > index >= end:
                 pred_x0 = pred_x0 - rho * norm_grad.detach()
@@ -276,9 +290,9 @@ class DDIMSampler(object):
             
             x_prev = x_prev.detach()
 
-            x = beta_t.sqrt() * x_prev + (1 - beta_t).sqrt() * noise_like(x.shape, device, repeat_noise)
+            x = beta_t.sqrt() * x_prev + (1 - beta_t).sqrt() * noise_like(x.shape, device, repeat_noise)  # time-travel strategy
 
-        return x_prev.detach(), pred_x0.detach()
+        return x_prev.detach(), pred_x0.detach(), norm
 
 
     # @torch.no_grad()

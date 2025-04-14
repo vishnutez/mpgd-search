@@ -138,6 +138,12 @@ class Diffusion(object):
                 "num_diffusion_timesteps": 1000,
             }
             model_f = Model(celeba_dict)
+
+            # url = "https://image-editing-test-12345.s3-us-west-2.amazonaws.com/checkpoints/celeba_hq.ckpt"
+            # ckpt = torch.hub.load_state_dict_from_url(url, map_location=self.device)
+
+            print("Loading model from {}".format(ckpt))
+
             ckpt = os.path.join(self.args.exp, "models/celeba_hq.ckpt")
             states = torch.load(ckpt, map_location=self.device)
             if type(states) == list:
