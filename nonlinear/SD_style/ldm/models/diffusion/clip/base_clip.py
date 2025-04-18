@@ -46,6 +46,36 @@ class CLIPEncoder(nn.Module):
             img = torch.unsqueeze(img, 0)
             img = img.cuda()
             self.ref = img
+
+    def get_residual(self, image, text):
+        text = clip.tokenize(text).cuda()
+        image = torch.nn.functional.interpolate(image, size=224, mode='bicubic')
+        image = self.preprocess(image)
+        image_feature, _ = self.clip_model.encode_image_with_features(image)
+        text_feature = self.clip_model.encode_text(text)
+        text_feature = text_feature.repeat(image.shape[0], 1)
+        return text_feature - image_feature
+
+
+    def get_clip_score_manual(self, image, text, normalize=True):
+        text = clip.tokenize(text).cuda()
+        image = torch.nn.functional.interpolate(image, size=224, mode='bicubic')
+        image = self.preprocess(image)
+        image_feature, _ = self.clip_model.encode_image_with_features(image)  # (b, d) with d=512
+        text_feature = self.clip_model.encode_text(text)  # (d,) with d=512
+        text_feature = text_feature.repeat(image.shape[0], 1)  # (b, d) with d=512
+        # compute inner product
+        if normalize:
+            normalized_image_feature = image_feature / torch.norm(image_feature, dim=1, keepdim=True)  # (b, d)
+            normalized_text_feature = text_feature / torch.norm(text_feature, dim=1, keepdim=True)  # (b, d)
+            normalized_clip_score = torch.bmm(normalized_image_feature.unsqueeze(1), normalized_text_feature.unsqueeze(2))  # (b, 1, d) * (b, d, 1) = (b, 1, 1)
+            normalized_clip_score = normalized_clip_score.squeeze(1).squeeze(1)  # (b,)
+            return normalized_clip_score
+        else:
+            clip_score = torch.bmm(image_feature.unsqueeze(1), text_feature.unsqueeze(2))  # (b, 1, d) * (b, d, 1) = (b, 1, 1)
+            clip_score = clip_score.squeeze(1).squeeze(1)  # (b,)
+            return clip_score
+
     
     def calc_ref_feat(self, ref_path):
         img = Image.open(ref_path).convert('RGB')
@@ -122,5 +152,22 @@ if __name__ == "__main__":
     m = CLIPEncoder().cuda()
     im1 = torch.randn((1, 3, 224, 224)).cuda()
     im2 = torch.randn((2, 3, 224, 224)).cuda()
+    im3 = torch.zeros_like(im2).cuda()
     gram_res = m.get_gram_matrix_residual_im1_im2(im1, im2)
     print('gram res shape: ', gram_res.shape)
+
+    text = 'random noise'
+    text_res_1 = m.get_residual(im1, text)
+    print('text res 1 shape: ', text_res_1.shape)
+
+    text_res_2 = m.get_residual(im2, text)
+    print('text res 2 shape: ', text_res_2.shape)
+
+    clip_score_2, normalized_clip_score_2 = m.get_clip_score_manual(image=im2, text='a black image')
+    print('clip score 2: ', clip_score_2)
+    print('normalized clip score 2 (random noise): ', normalized_clip_score_2)
+
+    clip_score_3, normalized_clip_score_3 = m.get_clip_score_manual(image=im3, text='a black image')
+    print('clip score 3: ', clip_score_3)
+    print('normalized clip score 3 (black): ', normalized_clip_score_3)
+

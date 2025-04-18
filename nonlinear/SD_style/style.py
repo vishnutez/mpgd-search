@@ -10,7 +10,6 @@ from itertools import islice
 from einops import rearrange
 from torchvision.utils import make_grid
 import time
-from pytorch_lightning import seed_everything
 from torch import autocast
 from contextlib import contextmanager, nullcontext
 import csv  # Add CSV import
@@ -102,6 +101,18 @@ def check_safety(x_image):
     return x_checked_image, has_nsfw_concept
 
 
+def seed_everything(seed):
+    import random
+    random.seed(seed)  # Python random module
+    np.random.seed(seed)  # NumPy random module
+    torch.manual_seed(seed)  # PyTorch (CPU)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)  # PyTorch (CUDA)
+        torch.cuda.manual_seed_all(seed)  # All GPUs (if using multi-GPU)
+    torch.backends.cudnn.deterministic = True  # Ensure deterministic behavior
+    torch.backends.cudnn.benchmark = False  # Disable benchmark mode for reproducibility
+
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -188,12 +199,12 @@ def main():
         default=8,
         help="downsampling factor",
     )
-    # parser.add_argument(
-    #     "--n_samples",
-    #     type=int,
-    #     default=1,
-    #     help="how many samples to produce for each given prompt. A.k.a. batch size",
-    # )
+    parser.add_argument(
+        "--n_samples",
+        type=int,
+        default=1,
+        help="how many samples to produce for each given prompt. A.k.a. batch size",
+    )
     parser.add_argument(
         "--n_rows",
         type=int,
@@ -248,6 +259,54 @@ def main():
         default=1,
         help="time travel cycle number",
     )
+
+    # additional args for search
+    parser.add_argument(
+        "--resample",
+        action='store_true',
+        help="use resampling",
+    )
+    parser.add_argument(
+        "--resample_every_t",
+        type=int,
+        default=10,
+        help="frequency of resampling",
+    )
+    parser.add_argument(
+        "--tilt_lambda_style",
+        type=float,
+        default=1,
+        help="lambda for the style loss",
+    )
+    parser.add_argument(
+        "--tilt_lambda_text",
+        type=float,
+        default=1,
+        help="lambda for the text loss",
+    )
+    parser.add_argument(
+        "--text_style_slider",
+        type=float,
+        default=1,
+        help="mixing ratio for text and style in [0, 1], 0 means only text, 1 means only style",
+    )
+    parser.add_argument(
+        "--no_gradient",
+        action='store_true',
+        help="use only search without taking gradient in x0 space",
+    )
+    parser.add_argument(
+        "--updated_style_loss",
+        action='store_true',
+        help="use updated style loss to compute the gradient",
+    )
+    parser.add_argument(
+        "--resample_2",
+        action='store_true',
+        help="resample only among the (2, 2) pairs",
+    )
+
+
     
     opt = parser.parse_args()
 
@@ -284,11 +343,17 @@ def main():
     wm_encoder = WatermarkEncoder()
     wm_encoder.set_watermark('bytes', wm.encode('utf-8'))
 
-    opt.n_samples = 2 # current version only supprt batchsize 1
+    # opt.n_samples = 2 # current version only supprt batchsize 1
     batch_size = opt.n_samples
     # Get current timestamp
     timestamp = datetime.now().strftime("%y_%m_%d_%H_%M_%S")
-    sample_path = os.path.join(outpath, f"{timestamp}_ddim{opt.ddim_steps}_tt{opt.tt}_rho{opt.rho}")
+    # sample_path = os.path.join(outpath, f"{timestamp}_ddim{opt.ddim_steps}_tt{opt.tt}_rho{opt.rho}")
+    if not opt.resample:
+        sample_path = os.path.join(outpath, f"{timestamp}_best_of_n")
+    elif opt.updated_style_loss:
+        sample_path = os.path.join(outpath, f"{timestamp}_resample_w_updated_style_loss")
+    else:
+        sample_path = os.path.join(outpath, f"{timestamp}_resample_w_style_loss")
     os.makedirs(sample_path, exist_ok=True)
     base_count = len(os.listdir(sample_path))
     grid_count = len(os.listdir(outpath)) - 1
@@ -298,6 +363,8 @@ def main():
         start_code = torch.randn([opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
         
     image_encoder = CLIPEncoder().cuda()
+
+    file_id = 0
 
     precision_scope = autocast if opt.precision=="autocast" else nullcontext
     with precision_scope("cuda") and model.ema_scope():
@@ -317,7 +384,7 @@ def main():
                         prompts = list(prompts)
                     c = model.get_learned_conditioning(prompts)
                     shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
-                    samples_ddim, intermediates, style_loss = sampler.sample(S=opt.ddim_steps,
+                    samples_ddim, intermediates, style_loss, clip_score = sampler.sample(S=opt.ddim_steps,
                                                         conditioning=c,
                                                         batch_size=opt.n_samples,
                                                         shape=shape,
@@ -328,7 +395,16 @@ def main():
                                                         x_T=start_code,
                                                         image_encoder=image_encoder,
                                                         tt = opt.tt,
-                                                        rho = opt.rho)
+                                                        rho = opt.rho,
+                                                        text = opt.prompt,
+                                                        resample=opt.resample,
+                                                        resample_every_t=opt.resample_every_t,
+                                                        tilt_lambda_style=opt.tilt_lambda_style,
+                                                        tilt_lambda_text=opt.tilt_lambda_text,
+                                                        text_style_slider=opt.text_style_slider,
+                                                        no_gradient=opt.no_gradient,
+                                                        updated_style_loss=opt.updated_style_loss,
+                                                        )
 
                     x_samples_ddim = model.decode_first_stage(samples_ddim)
                     x_samples_ddim = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
@@ -338,28 +414,46 @@ def main():
 
                     x_checked_image_torch = torch.from_numpy(x_checked_image).permute(0, 3, 1, 2)
 
+                    # Convert to numpy if it's a tensor
+                    style_loss_np = style_loss.cpu().numpy()
+                    clip_score_np = clip_score.cpu().numpy()
+
+                    # best img based on least style loss
+                    best_img_id = np.argmin(style_loss_np)
+                    best_style_loss = style_loss_np[best_img_id]
+                    best_clip_score = clip_score_np[best_img_id]
+
                     for i, x_sample in enumerate(x_checked_image_torch):
                         x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
                         img = Image.fromarray(x_sample.astype(np.uint8))
-                        img = put_watermark(img, wm_encoder)
+                        # img = put_watermark(img, wm_encoder)
                         
                         # Save image with timestamp in filename
-                        img.save(os.path.join(sample_path, f"{'.'.join(filename.split('.')[:-1])}_{j}_{i}.png"))
+                        if i == best_img_id:
+                            img.save(os.path.join(sample_path, f"{'.'.join(filename.split('.')[:-1])}_{file_id}_{i}_best.png"))
+                        else:
+                            img.save(os.path.join(sample_path, f"{'.'.join(filename.split('.')[:-1])}_{file_id}_{i}.png"))
                         base_count += 1
                     
                     # Save style_loss to CSV file in append mode
-                    csv_path = os.path.join(sample_path, "style_loss_log.csv")
+                    csv_path = os.path.join('outputs', "log.csv")
                     file_exists = os.path.isfile(csv_path)
                     
                     with open(csv_path, 'a', newline='') as csvfile:
                         csv_writer = csv.writer(csvfile)
                         # Write header if file doesn't exist
                         if not file_exists:
-                            csv_writer.writerow(['style_image', 'iteration', 'style_loss'])
+                            csv_writer.writerow(['seed', 'style_image', 'image_id', 'style_loss', 'clip_score', \
+                                                'resample', 'resample_every_t', 'tilt_lambda_style', 'tilt_lambda_text', \
+                                                'text_style_slider', 'updated_style_loss', 'best_img_id', 'best_style_loss', 'best_clip_score', 'timestamp'])
                         
-                        # Convert to scalar if it's a tensor
-                        loss_value = style_loss.item() if isinstance(style_loss, torch.Tensor) else style_loss
-                        csv_writer.writerow([filename, j, loss_value])
+
+                        csv_writer.writerow([opt.seed, filename, file_id, style_loss_np, clip_score_np, opt.resample, \
+                                            opt.resample_every_t, opt.tilt_lambda_style, opt.tilt_lambda_text, \
+                                            opt.text_style_slider, opt.updated_style_loss, \
+                                            best_img_id, best_style_loss, best_clip_score, timestamp])
+
+                file_id += 1
 
             toc = time.time()
 

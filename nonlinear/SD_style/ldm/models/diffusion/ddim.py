@@ -92,7 +92,14 @@ class DDIMSampler(object):
                image_encoder=None,
                tt=1,
                rho=15,
-               **kwargs
+               text=None,
+               resample=False,
+               resample_every_t=10,
+               tilt_lambda_style=1,
+               tilt_lambda_text=1,
+               text_style_slider=0.5,
+               no_gradient=False,
+               updated_style_loss=False,
                ):
         if conditioning is not None:
             if isinstance(conditioning, dict):
@@ -111,7 +118,7 @@ class DDIMSampler(object):
 
         self.image_encoder = image_encoder
 
-        samples, intermediates, style_loss = self.ddim_sampling(conditioning, size,
+        samples, intermediates, style_loss, clip_score = self.ddim_sampling(conditioning, size,
                                                     callback=callback,
                                                     img_callback=img_callback,
                                                     quantize_denoised=quantize_x0,
@@ -127,8 +134,16 @@ class DDIMSampler(object):
                                                     unconditional_conditioning=unconditional_conditioning,
                                                     tt=tt,
                                                     rho=rho,
+                                                    text=text,
+                                                    resample=resample,
+                                                    resample_every_t=resample_every_t,
+                                                    tilt_lambda_style=tilt_lambda_style,
+                                                    tilt_lambda_text=tilt_lambda_text,
+                                                    text_style_slider=text_style_slider,
+                                                    no_gradient=no_gradient,
+                                                    updated_style_loss=updated_style_loss,
                                                     )
-        return samples, intermediates, style_loss
+        return samples, intermediates, style_loss, clip_score
 
     # @torch.no_grad()
     def ddim_sampling(self, cond, shape,
@@ -136,7 +151,15 @@ class DDIMSampler(object):
                       callback=None, timesteps=None, quantize_denoised=False,
                       mask=None, x0=None, img_callback=None, log_every_t=100,
                       temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None,
-                      unconditional_guidance_scale=1., unconditional_conditioning=None, tt=1, rho=15):
+                      unconditional_guidance_scale=1., unconditional_conditioning=None, tt=1, rho=15, 
+                      resample_every_t=10, 
+                      tilt_lambda_style=1, 
+                      tilt_lambda_text=1, 
+                      resample=True, 
+                      text=None, 
+                      text_style_slider=0.5,
+                      no_gradient=False,
+                      updated_style_loss=False):
         device = self.model.betas.device
         b = shape[0]
         if x_T is None:
@@ -159,7 +182,7 @@ class DDIMSampler(object):
         self.total_steps = total_steps
 
         count1 = 0
-        current_style_loss = 0  # Initialize style_loss tracker
+        style_loss = 0  # Initialize style_loss tracker
 
         for i, step in enumerate(iterator):
 
@@ -176,14 +199,57 @@ class DDIMSampler(object):
                                     noise_dropout=noise_dropout, score_corrector=score_corrector,
                                     corrector_kwargs=corrector_kwargs,
                                     unconditional_guidance_scale=unconditional_guidance_scale,
-                                    unconditional_conditioning=unconditional_conditioning, tt=tt, rho=rho)
+                                    unconditional_conditioning=unconditional_conditioning, tt=tt, rho=rho, no_gradient=no_gradient)
 
             img, pred_x0, style_loss = outs
-            current_style_loss = style_loss
+
+            if i % resample_every_t == 0 and style_loss.max() > 0 and i > 0 and resample:
+                
+                if text_style_slider == 1:
+                    text_rewards = 0
+                elif text is not None:  # compute text loss
+                    with torch.no_grad():
+                        D_x0_t = self.model.decode_first_stage(pred_x0)
+                        text_score = self.image_encoder.get_clip_score_manual(image=D_x0_t, text=text, normalize=True)  # (b,)
+                        normalized_text_score = (text_score - text_score.min()) / (text_score.max() - text_score.min())
+                        text_rewards = tilt_lambda_text * normalized_text_score  # clip score
+                        print('text rewards:', text_rewards)
+                else:
+                    text_rewards = 0
+
+
+                if text_style_slider == 0:  # do not compute style loss as style mix is 0
+                    style_rewards = 0
+                else:  # compute style loss
+                    if updated_style_loss:
+                        print('updated style loss')
+                        with torch.no_grad():
+                            D_x0_t = self.model.decode_first_stage(pred_x0)
+                            residual = self.image_encoder.get_gram_matrix_residual(D_x0_t)
+                            style_loss = torch.linalg.norm(residual, axis=(-1, -2)) # compute the norm
+                    else:
+                        print('original style loss')
+                    normalized_style_loss = (style_loss - style_loss.min()) / (style_loss.max() - style_loss.min())
+                    style_rewards = -tilt_lambda_style * normalized_style_loss
+                    print('style rewards:', style_rewards)
+                
+                    
+                # Combine style and text rewards
+                rewards =  (1-text_style_slider) * text_rewards +  text_style_slider * style_rewards
+
+                print('text/style mix:', text_style_slider)
+                print('Resampling with rewards:', rewards)
+
+                indices = torch.multinomial(torch.exp(rewards), img.shape[0], replacement=True)  # sample multinomially with style_rewards as weights
+                img = img[indices]
+                pred_x0 = pred_x0[indices]
+                style_loss = style_loss[indices]
+                print('Resampled with indices:', indices)
+
             
             # Update tqdm description with style_loss every 10 steps
             if i % 10 == 0:
-                iterator.set_description(f"DDIM Sampler - Style Loss: {current_style_loss:.6f}")
+                iterator.set_description(f"DDIM Sampler - Style Loss: {style_loss}")
 
             count1 += 1
             pred_x0_temp = self.model.decode_first_stage(pred_x0)
@@ -203,12 +269,20 @@ class DDIMSampler(object):
             intermediates['x_inter'].append(img)
             intermediates['pred_x0'].append(pred_x0)
 
-        return img, intermediates, current_style_loss
+        # compute unnormalized text loss
+        if text is not None:
+            with torch.no_grad():
+                D_x0_t = self.model.decode_first_stage(pred_x0)
+                clip_score = self.image_encoder.get_clip_score_manual(image=D_x0_t, text=text, normalize=False)
+        else:
+            clip_score = 0
+
+        return img, intermediates, style_loss, clip_score
       
     @torch.no_grad()
     def p_sample_ddim_conditional_x0(self, x, c, t, index, repeat_noise=False, use_original_steps=False, quantize_denoised=False,
                       temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None,
-                      unconditional_guidance_scale=1., unconditional_conditioning=None, tt=1, rho=15):
+                      unconditional_guidance_scale=1., unconditional_conditioning=None, tt=1, rho=15, no_gradient=False):
         b, *_, device = *x.shape, x.device
 
         # x.requires_grad = True
@@ -262,9 +336,9 @@ class DDIMSampler(object):
             # current prediction for x_0
             pred_x0 = (x - sqrt_one_minus_at * e_t) / a_t.sqrt()
             with torch.enable_grad():
-                pred_x0 = pred_x0.detach().requires_grad_(True)
-            
-                if start > index >= end:
+                
+                if start > index >= end and not no_gradient:
+                    pred_x0 = pred_x0.detach().requires_grad_(True)
                     D_x0_t = self.model.decode_first_stage(pred_x0)
                     residual = self.image_encoder.get_gram_matrix_residual(D_x0_t)  # B, d, d
                     norm = torch.linalg.norm(residual, axis=(-1, -2)) # compute the norm
@@ -279,9 +353,12 @@ class DDIMSampler(object):
                         residual = self.image_encoder.get_gram_matrix_residual(D_x0_t)
                         norm = torch.linalg.norm(residual, axis=(-1, -2)) # still compute the norm for logging
 
-            if start > index >= end:
+            if start > index >= end and not no_gradient:
                 pred_x0 = pred_x0 - rho * norm_grad.detach()
-            pred_x0 = pred_x0.detach()
+                pred_x0 = pred_x0.detach()
+            elif no_gradient:
+                print("*" * 20 + 'no gradient' + "*" * 20)
+
             c1 = a_prev.sqrt() * (1 - a_t / a_prev) / (1 - a_t)
             c2 = (a_t / a_prev).sqrt() * (1 - a_prev) / (1 - a_t)
             c3 = (1 - a_prev) * (1 - a_t / a_prev) / (1 - a_t)
