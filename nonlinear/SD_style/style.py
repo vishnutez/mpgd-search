@@ -135,7 +135,7 @@ def main():
         type=str,
         nargs="?",
         help="dir to write results to",
-        default="outputs/"
+        default="outputs_2/"
     )
     parser.add_argument(
         "--ddim_steps",
@@ -410,7 +410,8 @@ def main():
                     x_samples_ddim = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
                     x_samples_ddim = x_samples_ddim.cpu().permute(0, 2, 3, 1).detach().numpy()
 
-                    x_checked_image, has_nsfw_concept = check_safety(x_samples_ddim)
+                    # x_checked_image, has_nsfw_concept = check_safety(x_samples_ddim)
+                    x_checked_image = x_samples_ddim  # todo: switch back
 
                     x_checked_image_torch = torch.from_numpy(x_checked_image).permute(0, 3, 1, 2)
 
@@ -436,7 +437,7 @@ def main():
                         base_count += 1
                     
                     # Save style_loss to CSV file in append mode
-                    csv_path = os.path.join('outputs', "log.csv")
+                    csv_path = os.path.join(opt.outdir, "log.csv")
                     file_exists = os.path.isfile(csv_path)
                     
                     with open(csv_path, 'a', newline='') as csvfile:

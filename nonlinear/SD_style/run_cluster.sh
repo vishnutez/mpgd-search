@@ -16,16 +16,18 @@ ml WebProxy
 source activate mpgd
 
 # Define seeds
-seeds=(42 43 44 45 46)
+seeds=(42 43 44 45 46 47 48 49 50 51)
+# Define the style reference path
 
 # Loop through each seed
 for seed in "${seeds[@]}"; do
     # Run with --resample
+
     python style.py --style_ref_path './style_images/' \
                     --ddim_steps 100 --n_iter 1 --H 512 --W 512 \
                     --scale 5.0 --rho 15 --tt 1 --seed $seed \
                     --prompt "a knight holding his sword" \
-                    --fixed_code --n_samples 4 \
+                    --fixed_code --n_samples 2 \
                     --resample_every_t 20 \
                     --tilt_lambda_style 2 \
                     --tilt_lambda_text 1 \
@@ -37,7 +39,7 @@ for seed in "${seeds[@]}"; do
                     --ddim_steps 100 --n_iter 1 --H 512 --W 512 \
                     --scale 5.0 --rho 15 --tt 1 --seed $seed \
                     --prompt "a knight holding his sword" \
-                    --fixed_code --n_samples 4 \
+                    --fixed_code --n_samples 2 \
                     --resample_every_t 20 \
                     --tilt_lambda_style 2 \
                     --tilt_lambda_text 1 \
@@ -49,10 +51,11 @@ for seed in "${seeds[@]}"; do
                     --ddim_steps 100 --n_iter 1 --H 512 --W 512 \
                     --scale 5.0 --rho 15 --tt 1 --seed $seed \
                     --prompt "a knight holding his sword" \
-                    --fixed_code --n_samples 4 \
+                    --fixed_code --n_samples 2 \
                     --resample_every_t 20 \
                     --tilt_lambda_style 2 \
                     --tilt_lambda_text 1 \
                     --text_style_slider 1
+                    
 done  # Add this missing 'done'
 
