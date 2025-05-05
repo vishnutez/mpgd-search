@@ -16,7 +16,7 @@ import csv  # Add CSV import
 from datetime import datetime  # Add datetime import
 
 from ldm.util import instantiate_from_config
-from ldm.models.diffusion.ddim import DDIMSampler
+from ldm.models.diffusion.ddim_search import DDIMSampler
 from ldm.models.diffusion.plms import PLMSSampler
 from ldm.models.diffusion.dpm_solver import DPMSolverSampler
 
@@ -118,6 +118,11 @@ def seed_everything(seed):
         print(f"Seed set to {seed} for PyTorch Lightning.")
     except ImportError:
         pass
+
+def load_yaml(file_path: str) -> dict:
+    with open(file_path) as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+    return config
 
 
 def main():
@@ -267,53 +272,48 @@ def main():
         help="time travel cycle number",
     )
 
-    # additional args for search
+    # arugments for search_algo and reward_eval
     parser.add_argument(
-        "--resample",
-        action='store_true',
-        help="use resampling",
+        "--search_algo_config",
+        type=str,
+        default='configs/search_resample.yaml',
     )
     parser.add_argument(
-        "--resample_every_t",
-        type=int,
-        default=10,
-        help="frequency of resampling",
+        "--reward_eval_config",
+        type=str,
+        default='configs/reward_eval_style_loss.yaml',
     )
     parser.add_argument(
-        "--tilt_lambda_style",
-        type=float,
-        default=1,
-        help="lambda for the style loss",
+        "--eval_fn_list",
+        type=str,
+        nargs="+",
+        default=["style_loss", "clip_score"],
+        help="list of eval fn names",
     )
-    parser.add_argument(
-        "--tilt_lambda_text",
-        type=float,
-        default=1,
-        help="lambda for the text loss",
-    )
-    parser.add_argument(
-        "--text_style_slider",
-        type=float,
-        default=1,
-        help="mixing ratio for text and style in [0, 1], 0 means only text, 1 means only style",
-    )
-    parser.add_argument(
-        "--no_gradient",
-        action='store_true',
-        help="use only search without taking gradient in x0 space",
-    )
-    parser.add_argument(
-        "--updated_style_loss",
-        action='store_true',
-        help="use updated style loss to compute the gradient",
-    )
-    parser.add_argument(
-        "--resample_2",
-        action='store_true',
-        help="resample only among the (2, 2) pairs",
-    )
+   
     
+
     opt = parser.parse_args()
+
+    search_algo_config = load_yaml(opt.search_algo_config)
+    reward_eval_config = load_yaml(opt.reward_eval_config)
+
+    from reward_eval import get_reward_eval
+    from search_algo import get_search_algo
+
+    reward_eval = get_reward_eval(**reward_eval_config)
+    search_algo = get_search_algo(**search_algo_config)
+
+    num_particles = search_algo_config['num_particles']
+    search_algo_name = search_algo_config['name']
+
+    from st_eval import get_eval_fn, Evaluator
+
+    # get evaluator
+    eval_fn_list = []
+    for eval_fn_name in opt.eval_fn_list:
+        eval_fn_list.append(get_eval_fn(eval_fn_name))
+    evaluator = Evaluator(eval_fn_list)
 
     if opt.laion400m:
         print("Falling back to LAION 400M model...")
@@ -329,7 +329,6 @@ def main():
 
     config = OmegaConf.load(f"{opt.config}")
     model = load_model_from_config(config, f"{opt.ckpt}")
-
     
     model = model.to(device)
 
@@ -349,27 +348,26 @@ def main():
     wm_encoder.set_watermark('bytes', wm.encode('utf-8'))
 
     # opt.n_samples = 2 # current version only supprt batchsize 1
-    batch_size = opt.n_samples
+    batch_size = num_particles
     # Get current timestamp
     timestamp = datetime.now().strftime("%y_%m_%d_%H_%M_%S")
     # sample_path = os.path.join(outpath, f"{timestamp}_ddim{opt.ddim_steps}_tt{opt.tt}_rho{opt.rho}")
-    if not opt.resample:
-        sample_path = os.path.join(outpath, f"{timestamp}_best_of_n")
-    elif opt.updated_style_loss:
-        sample_path = os.path.join(outpath, f"{timestamp}_resample_w_updated_style_loss")
-    else:
-        sample_path = os.path.join(outpath, f"{timestamp}_resample_w_style_loss")
+
+    sample_path = os.path.join(outpath, f"{timestamp}_{search_algo_name}")
+    
     os.makedirs(sample_path, exist_ok=True)
     base_count = len(os.listdir(sample_path))
     grid_count = len(os.listdir(outpath)) - 1
 
     start_code = None
     if opt.fixed_code:
-        start_code = torch.randn([opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
+        start_code = torch.randn([num_particles, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
         
     image_encoder = CLIPEncoder().cuda()
 
     file_id = 0
+
+    markdown_table = ''
 
     precision_scope = autocast if opt.precision=="autocast" else nullcontext
     with precision_scope("cuda") and model.ema_scope():
@@ -382,6 +380,16 @@ def main():
                     style_ref_img_path = os.path.join(opt.style_ref_path, filename)
                     image_encoder.calc_ref_feat(style_ref_img_path)
                     prompts = batch_size * [opt.prompt]
+                    ref_style_img = Image.open(style_ref_img_path).convert("RGB")
+
+                    from torchvision import transforms
+                    transforms = transforms.Compose([
+                        transforms.Resize((opt.H, opt.W), interpolation=transforms.InterpolationMode.BICUBIC),
+                        transforms.ToTensor(),
+                        transforms.Normalize([0.5], [0.5])
+                    ])
+                    ref = transforms(ref_style_img).unsqueeze(0).to(device)  # convert ref style img to tensor
+
                     uc = None
                     if opt.scale != 1.0:
                         uc = model.get_learned_conditioning(batch_size * [""])
@@ -389,7 +397,7 @@ def main():
                         prompts = list(prompts)
                     c = model.get_learned_conditioning(prompts)
                     shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
-                    samples_ddim, intermediates, style_loss, clip_score = sampler.sample(S=opt.ddim_steps,
+                    samples_ddim, intermediates = sampler.sample(S=opt.ddim_steps,
                                                         conditioning=c,
                                                         batch_size=opt.n_samples,
                                                         shape=shape,
@@ -402,13 +410,9 @@ def main():
                                                         tt = opt.tt,
                                                         rho = opt.rho,
                                                         text = opt.prompt,
-                                                        resample=opt.resample,
-                                                        resample_every_t=opt.resample_every_t,
-                                                        tilt_lambda_style=opt.tilt_lambda_style,
-                                                        tilt_lambda_text=opt.tilt_lambda_text,
-                                                        text_style_slider=opt.text_style_slider,
-                                                        no_gradient=opt.no_gradient,
-                                                        updated_style_loss=opt.updated_style_loss,
+                                                        reward_eval=reward_eval,
+                                                        search_algo=search_algo,
+                                                        ref=ref,                                                    
                                                         )
 
                     x_samples_ddim = model.decode_first_stage(samples_ddim)
@@ -417,51 +421,29 @@ def main():
 
                     # x_checked_image, has_nsfw_concept = check_safety(x_samples_ddim)
                     x_checked_image = x_samples_ddim  # todo: switch back
-
                     x_checked_image_torch = torch.from_numpy(x_checked_image).permute(0, 3, 1, 2)
 
-                    # Convert to numpy if it's a tensor
-                    style_loss_np = style_loss.cpu().numpy()
-                    clip_score_np = clip_score.cpu().numpy()
+                    for n, x_sample in enumerate(x_checked_image_torch):
+                        results = evaluator.eval(gt=ref, pred=x_sample, batch_size=1)
+                        markdown_text = evaluator.display(results)
+                        markdown_table += '\n' + markdown_text
 
-                    # best img based on least style loss
-                    best_img_id = np.argmin(style_loss_np)
-                    best_style_loss = style_loss_np[best_img_id]
-                    best_clip_score = clip_score_np[best_img_id]
 
-                    for i, x_sample in enumerate(x_checked_image_torch):
                         x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
                         img = Image.fromarray(x_sample.astype(np.uint8))
                         # img = put_watermark(img, wm_encoder)
                         
                         # Save image with timestamp in filename
-                        if i == best_img_id:
-                            img.save(os.path.join(sample_path, f"{'.'.join(filename.split('.')[:-1])}_{file_id}_{i}_best.png"))
-                        else:
-                            img.save(os.path.join(sample_path, f"{'.'.join(filename.split('.')[:-1])}_{file_id}_{i}.png"))
-                        base_count += 1
-                    
-                    # Save style_loss to CSV file in append mode
-                    csv_path = os.path.join(opt.outdir, "log.csv")
-                    file_exists = os.path.isfile(csv_path)
-                    
-                    with open(csv_path, 'a', newline='') as csvfile:
-                        csv_writer = csv.writer(csvfile)
-                        # Write header if file doesn't exist
-                        if not file_exists:
-                            csv_writer.writerow(['seed', 'style_image', 'image_id', 'style_loss', 'clip_score', \
-                                                'resample', 'resample_every_t', 'tilt_lambda_style', 'tilt_lambda_text', \
-                                                'text_style_slider', 'updated_style_loss', 'best_img_id', 'best_style_loss', 'best_clip_score', 'timestamp'])
-                        
+                        img.save(os.path.join(sample_path, f"{'.'.join(filename.split('.')[:-1])}_{file_id}_{n}.png"))
 
-                        csv_writer.writerow([opt.seed, filename, file_id, style_loss_np, clip_score_np, opt.resample, \
-                                            opt.resample_every_t, opt.tilt_lambda_style, opt.tilt_lambda_text, \
-                                            opt.text_style_slider, opt.updated_style_loss, \
-                                            best_img_id, best_style_loss, best_clip_score, timestamp])
+                        base_count += 1
+                   
 
                 file_id += 1
 
             toc = time.time()
+
+            print('Table:', markdown_table)
 
 
 
