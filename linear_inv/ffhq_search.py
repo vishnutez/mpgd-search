@@ -147,6 +147,17 @@ def main():
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     dir_path = f"{timestamp}_{diffusion_config['timestep_respacing']}_eta{args.eta}_scale{args.scale}"
 
+    if args.best_of_n:
+        dir_path += f"_best_of_n_{num_particles}"
+    else:
+        dir_path += f"_resample_n_{num_particles}"
+
+    if args.perform_lookahead:
+        if args.conditional_lookahead:
+            dir_path += f"_cla_{args.num_lookahead_steps}"
+        else:
+            dir_path += f"_uncla_{args.num_lookahead_steps}"
+
     task_name = measure_config['operator']['name']
 
     if task_name == 'super_resolution':
@@ -225,7 +236,7 @@ def main():
 
         sample, best_sample = sample_fn(x_start=x_start, 
                            measurement=y_n, 
-                           record=True, 
+                           record=False, 
                            save_root=out_path, 
                            reward_eval=reward_eval, 
                            search_algo=search_algo,
@@ -254,8 +265,10 @@ def main():
     # log metrics
     n_uniq_samples = len(samples) // num_particles
 
-    markdown_table = ''
-
+    # add all the configs to the markdown table
+    markdown_table = f'arguments: \n \n'
+    for arg, value in vars(args).items():
+        markdown_table += f'- **{arg}**: {value} \n '
 
     for n in range(num_particles):
         idxs = np.arange(n_uniq_samples) * num_particles + n

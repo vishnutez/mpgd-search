@@ -20,5 +20,7 @@ python ffhq_search.py \
     --timestep=200 \
     --scale=4 \
     --method="mpgd_wo_proj" \
-    --num_lookahead_steps=1 \
+    --num_lookahead_steps=2 \
+    --perform_lookahead \
+    --conditional_lookahead \
 

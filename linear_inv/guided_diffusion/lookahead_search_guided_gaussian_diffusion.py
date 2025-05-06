@@ -466,8 +466,8 @@ class DDIMx0(SpacedDiffusion):
                       num_lookahead_steps=1,
                       conditional_generation=True,
                       conditional_lookahead=True,
-                      sigma=None,
-                      perform_lookahead=False):
+                      perform_lookahead=False,
+                      use_sigma=True):
         """
         The function used for sampling from noise.
         """ 
@@ -501,12 +501,16 @@ class DDIMx0(SpacedDiffusion):
 
             alpha_bar = extract_and_expand(self.alphas_cumprod, t, x)
             alpha_bar_prev = extract_and_expand(self.alphas_cumprod_prev, t, x)
-            if sigma is None:  # if sigma is not provided, use the default
+            if use_sigma:  # if sigma is not provided, use the default
+                print('using sigma, in the main loop')
                 sigma = (
                     eta
                     * torch.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar))
                     * torch.sqrt(1 - alpha_bar / alpha_bar_prev)
                 )
+            else:
+                print('not using sigma, inside lookahead internal loop')
+                sigma = 0
             
             x_0_hat = out['pred_xstart'].detach()
 
@@ -516,8 +520,17 @@ class DDIMx0(SpacedDiffusion):
                 #     x0_sample = x_0_hat.clone()
                 # else:
                 # divide the idx into equal parts of num_lookahead_steps
+            
 
-                if idx > num_lookahead_steps and perform_lookahead:
+                # if perform_lookahead and idx > num_lookahead_steps:
+                    
+                #     # print('x0_sample: ', x0_sample)
+                #     # print('x0_hat: ', x_0_hat)
+                #     equals = (x0_sample == x_0_hat).all()
+                #     print('equals: ', equals)
+                # else:  # dont do lookahead
+                if perform_lookahead and idx > num_lookahead_steps:
+                    print('performing lookahead')
                     internal_steps = list(range(idx, 0, -idx // num_lookahead_steps))
                     print(f'idx: {idx}, internal_steps: {internal_steps}')
                     internal_pbar = tqdm(internal_steps)
@@ -532,14 +545,16 @@ class DDIMx0(SpacedDiffusion):
                                                     ref=None,
                                                     pbar=internal_pbar,
                                                     num_lookahead_steps=1,
-                                                    conditional_generation=conditional_lookahead)  # doing conditional lookahead, use sigma=0
-                    # print('x0_sample: ', x0_sample)
-                    # print('x0_hat: ', x_0_hat)
+                                                    conditional_generation=conditional_lookahead,
+                                                    perform_lookahead=False,
+                                                    use_sigma=False)  # doing conditional lookahead, use sigma=0
+                    
                     equals = (x0_sample == x_0_hat).all()
-                    print('equals: ', equals)
-                else:  # dont do lookahead
-                    x0_sample = x_0_hat
+                    print('x0_sample == x_0_hat?: ', equals)
+                else:
+                    print('not performing lookahead')
                     print('x0_sample is x_0_hat')
+                    x0_sample = x_0_hat
 
                 rewards = reward_eval.get_reward(x0_sample)
 
@@ -557,23 +572,25 @@ class DDIMx0(SpacedDiffusion):
                                             at=alpha_bar_prev,
                                             t=t/self.num_timesteps)
             else:
+                print('unconditional generation in lookahead internal loop')
                 x0_t = x_0_hat.detach()
-                distance = torch.zeros_like(x0_t)
+                distance = torch.zeros(x0_t.shape[0])
 
             out["pred_xstart"] = x0_t
             
             # Equation 12.
-            noise = torch.randn_like(x)
+            
             mean_pred = (
                 out["pred_xstart"] * torch.sqrt(alpha_bar_prev)
                 + torch.sqrt(1 - alpha_bar_prev - sigma ** 2) * eps
             )
-
+            
             img = mean_pred
-            if (t != 0).all():
+            if use_sigma:
+                noise = torch.randn_like(x)
+            if (t != 0).all() and use_sigma:
                 img += sigma * noise
             img = img.detach_()
-
            
             pbar.set_postfix({'distance': distance.mean().item()}, refresh=False)
             
@@ -588,7 +605,7 @@ class DDIMx0(SpacedDiffusion):
             print('computing best img')
             final_rewards = reward_eval.get_reward(img)
             best_img = img[final_rewards.argmax()].unsqueeze(0)
-            return img, best_img   
+            return img, best_img  
         
         return img, x0_t
 
