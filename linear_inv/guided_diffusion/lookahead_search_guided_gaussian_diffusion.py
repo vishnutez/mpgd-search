@@ -462,7 +462,12 @@ class DDIMx0(SpacedDiffusion):
                       search_algo=None,
                       reward_eval=None,
                       ref=None,
-                      **kwargs):
+                      pbar=None,
+                      num_lookahead_steps=1,
+                      conditional_generation=True,
+                      conditional_lookahead=True,
+                      sigma=None,
+                      perform_lookahead=False):
         """
         The function used for sampling from noise.
         """ 
@@ -474,12 +479,12 @@ class DDIMx0(SpacedDiffusion):
             ref = ref.to(device)
             print('ref: ', ref)
             reward_eval.set_ref_embeddings(ref)
+            if reward_eval.ref_embd is None:
+                print('ref is not None, but ref_embd is None')
 
-        if reward_eval.ref_embd is None and ref is not None:
-            print('ref is not None, but ref_embd is None')
-
-
-        pbar = tqdm(list(range(self.num_timesteps))[::-1])
+        if pbar is None:
+            pbar = tqdm(list(range(self.num_timesteps))[::-1])
+    
         for idx in pbar:
             time = torch.tensor([idx] * img.shape[0], device=device)
             t=time
@@ -488,6 +493,7 @@ class DDIMx0(SpacedDiffusion):
             #unconditional sampling
             # out = self.p_sample(x=img, t=time, model=model) #out = {x_t-1, x_0_hat}
             x=img
+            print('x: ', x.shape)
             
             out = self.p_mean_variance(model, x, t)
 
@@ -495,28 +501,64 @@ class DDIMx0(SpacedDiffusion):
 
             alpha_bar = extract_and_expand(self.alphas_cumprod, t, x)
             alpha_bar_prev = extract_and_expand(self.alphas_cumprod_prev, t, x)
-            sigma = (
-                eta
-                * torch.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar))
-                * torch.sqrt(1 - alpha_bar / alpha_bar_prev)
-            )
+            if sigma is None:  # if sigma is not provided, use the default
+                sigma = (
+                    eta
+                    * torch.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar))
+                    * torch.sqrt(1 - alpha_bar / alpha_bar_prev)
+                )
             
             x_0_hat = out['pred_xstart'].detach()
 
             # resample to pick where to start
             if ref != None and search_algo is not None and reward_eval is not None and reward_eval.ref_embd is not None:
-                rewards = reward_eval.get_reward(x_0_hat)
+                # if num_lookahead_steps == 1:
+                #     x0_sample = x_0_hat.clone()
+                # else:
+                # divide the idx into equal parts of num_lookahead_steps
+
+                if idx > num_lookahead_steps and perform_lookahead:
+                    internal_steps = list(range(idx, 0, -idx // num_lookahead_steps))
+                    print(f'idx: {idx}, internal_steps: {internal_steps}')
+                    internal_pbar = tqdm(internal_steps)
+                    x_prev_sample, x0_sample = self.p_sample_loop(model,
+                                                    x,
+                                                    measurement,
+                                                    measurement_cond_fn,
+                                                    False,
+                                                    save_root,
+                                                    search_algo=None,
+                                                    reward_eval=None,
+                                                    ref=None,
+                                                    pbar=internal_pbar,
+                                                    num_lookahead_steps=1,
+                                                    conditional_generation=conditional_lookahead)  # doing conditional lookahead, use sigma=0
+                    # print('x0_sample: ', x0_sample)
+                    # print('x0_hat: ', x_0_hat)
+                    equals = (x0_sample == x_0_hat).all()
+                    print('equals: ', equals)
+                else:  # dont do lookahead
+                    x0_sample = x_0_hat
+                    print('x0_sample is x_0_hat')
+
+                rewards = reward_eval.get_reward(x0_sample)
+
                 forward_step = self.num_timesteps - 1 - idx
                 resampled_idxs = search_algo.search(rewards=rewards, step=forward_step)
                 x_0_hat = x_0_hat[resampled_idxs]  # resample idxs
 
 
-            with torch.enable_grad():
-                x_0_hat = x_0_hat.requires_grad_()
-                x0_t, distance = measurement_cond_fn(measurement=measurement,
-                                          x_0_hat=x_0_hat,
-                                          at=alpha_bar_prev,
-                                          t=t/self.num_timesteps)
+            if conditional_generation:
+                print('conditional generation in main loop')
+                with torch.enable_grad():
+                    x_0_hat = x_0_hat.requires_grad_()
+                    x0_t, distance = measurement_cond_fn(measurement=measurement,
+                                            x_0_hat=x_0_hat,
+                                            at=alpha_bar_prev,
+                                            t=t/self.num_timesteps)
+            else:
+                x0_t = x_0_hat.detach()
+                distance = torch.zeros_like(x0_t)
 
             out["pred_xstart"] = x0_t
             
@@ -531,9 +573,13 @@ class DDIMx0(SpacedDiffusion):
             if (t != 0).all():
                 img += sigma * noise
             img = img.detach_()
+
            
             pbar.set_postfix({'distance': distance.mean().item()}, refresh=False)
+            
             if record:
+                print('recording')
+                print('img: ', img.shape)
                 if idx % 20 == 0:
                     file_path = os.path.join(save_root, f"progress/x_{str(idx).zfill(4)}.png")
                     plt.imsave(file_path, clear_color(img[0].unsqueeze(0)))
@@ -542,7 +588,9 @@ class DDIMx0(SpacedDiffusion):
             print('computing best img')
             final_rewards = reward_eval.get_reward(img)
             best_img = img[final_rewards.argmax()].unsqueeze(0)
-            return img, best_img     
+            return img, best_img   
+        
+        return img, x0_t
 
     def predict_eps_from_x_start(self, x_t, t, pred_xstart):
         coef1 = extract_and_expand(self.sqrt_recip_alphas_cumprod, t, x_t)

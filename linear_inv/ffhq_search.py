@@ -14,7 +14,7 @@ from guided_diffusion.condition_methods import get_conditioning_method
 from guided_diffusion.measurements import get_noise, get_operator
 from guided_diffusion.unet import create_model
 
-from guided_diffusion.search_guided_gaussian_diffusion import create_sampler  # changed to search guided gaussian diffusion
+from guided_diffusion.lookahead_search_guided_gaussian_diffusion import create_sampler  # changed to search guided gaussian diffusion
 
 
 from data.dataloader import get_dataset, get_dataloader
@@ -67,6 +67,13 @@ def main():
     parser.add_argument('--search_algo_config', type=str, default='./configs/search_resample.yaml')
     parser.add_argument('--reward_eval_config', type=str, default='./configs/reward_eval_facenet.yaml')
     parser.add_argument('--ref_faces_path', type=str, default='./data/ref-face-images/')
+
+    # additional args for lookahead 
+    parser.add_argument('--best_of_n', action='store_true', help='Pick out the best of n samples')
+    parser.add_argument('--num_lookahead_steps', type=int, default=1)
+    parser.add_argument('--conditional_lookahead', action='store_true')
+    parser.add_argument('--perform_lookahead', action='store_true')
+
     args = parser.parse_args()
    
     # logger
@@ -86,6 +93,8 @@ def main():
     task_config = load_yaml(args.task_config)
     search_algo_config = load_yaml(args.search_algo_config)
     reward_eval_config = load_yaml(args.reward_eval_config)
+
+    
     
     if args.timestep < 1000:
         diffusion_config["timestep_respacing"] = f"ddim{args.timestep}"
@@ -118,15 +127,20 @@ def main():
    
     # Load diffusion sampler
     sampler = create_sampler(**diffusion_config) 
-    sample_fn = partial(sampler.p_sample_loop, model=model, measurement_cond_fn=measurement_cond_fn)
+    sample_fn = partial(sampler.p_sample_loop, model=model, measurement_cond_fn=measurement_cond_fn, num_lookahead_steps=args.num_lookahead_steps)
+
 
     print(f"Search algorithm: {search_algo_config['name']}")
     print(f"Reward evaluation: {reward_eval_config['name']}")
 
-    search_algo = get_search_algo(**search_algo_config)
+    
     reward_eval = get_reward_eval(**reward_eval_config)
+    search_algo = get_search_algo(**search_algo_config)
 
     num_particles = search_algo_config['num_particles']
+
+    if args.best_of_n:
+        search_algo = None  # disable search algorithm 
    
     # Working directory
     import datetime
@@ -164,9 +178,6 @@ def main():
         eval_fn_list.append(get_eval_fn(eval_fn_name))
     evaluator = Evaluator(eval_fn_list)
 
-    images = []
-    samples = []
-
     img_size = 256
     transform = transforms.Compose([
             transforms.Resize((img_size, img_size)),
@@ -177,7 +188,12 @@ def main():
     extensions = ['*.jpg', '*.JPG', '*.jpeg', '*.JPEG', '*.png', '*.PNG']
     ref_faces = [file for ext in extensions for file in Path().rglob(ext)]
 
-    n_images = 10
+    n_images = 2
+
+    images = []
+    samples = []
+    best_samples = []
+
         
     # Do Inference
     for i, ref_img in enumerate(loader):
@@ -207,20 +223,25 @@ def main():
         x_start = torch.randn((num_particles, 3, img_size, img_size), device=device).requires_grad_()
         print(f"x_start shape: {x_start.shape}")
 
-        sample = sample_fn(x_start=x_start, 
+        sample, best_sample = sample_fn(x_start=x_start, 
                            measurement=y_n, 
-                           record=False, 
+                           record=True, 
                            save_root=out_path, 
                            reward_eval=reward_eval, 
                            search_algo=search_algo,
-                           ref=ref_face_img)
+                           ref=ref_face_img,
+                           num_lookahead_steps=args.num_lookahead_steps,
+                           conditional_lookahead=args.conditional_lookahead,
+                           perform_lookahead=args.perform_lookahead,)
 
     
         images.append(ref_img)
         samples.append(sample)
+        best_samples.append(best_sample)
 
         plt.imsave(os.path.join(out_path, 'input', f'{i:03}_input.png'), clear_color(y_n))
         plt.imsave(os.path.join(out_path, 'label', f'{i:03}_label.png'), clear_color(ref_img))
+        plt.imsave(os.path.join(out_path, 'recon', f'{i:03}_best_recon.png'), clear_color(best_sample))
         
         for n, sample_n in enumerate(sample):
             plt.imsave(os.path.join(out_path, 'recon', f'{i:03}_recon_{n}.png'), clear_color(sample_n))
@@ -228,11 +249,13 @@ def main():
     
     images = torch.cat(images, dim=0)
     samples = torch.cat(samples, dim=0)
+    best_samples = torch.cat(best_samples, dim=0)   
 
     # log metrics
     n_uniq_samples = len(samples) // num_particles
 
     markdown_table = ''
+
 
     for n in range(num_particles):
         idxs = np.arange(n_uniq_samples) * num_particles + n
@@ -240,6 +263,10 @@ def main():
         results = evaluator.report(images, y, samples[idxs])
         markdown_text = evaluator.display(results)
         markdown_table += '\n' + markdown_text
+
+    best_results = evaluator.report(images, y, best_samples)
+    best_markdown_text = evaluator.display(best_results)    
+    markdown_table += '\n \n \n best results \n' + best_markdown_text
 
     print(markdown_table)
 

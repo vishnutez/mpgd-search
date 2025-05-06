@@ -14,7 +14,7 @@ singularity shell /mnt/lab_files/ECEN403-404/containers/cuda_10.2-cudnn7-py36.si
 
 python ffhq_sample_condition.py \
     --model_config=configs/model_config.yaml \
-    --diffusion_config=configs/mgpd_diffusion_config.yaml \
+    --diffusion_config=configs/mpgd_diffusion_config.yaml \
     --task_config=configs/super_resolution_config.yaml \
     --timestep=200 \
     --scale=4 \
