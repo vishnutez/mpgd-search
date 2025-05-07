@@ -1,5 +1,5 @@
 name: resample
-num_particles: 4
+num_particles: 2
 num_steps: 200
 resample_rate: 2  # per steps
 annealing: constant

@@ -14,7 +14,7 @@ from guided_diffusion.condition_methods import get_conditioning_method
 from guided_diffusion.measurements import get_noise, get_operator
 from guided_diffusion.unet import create_model
 
-from guided_diffusion.prev_lookahead_search_guided_gaussian_diffusion import create_sampler  # changed to search guided gaussian diffusion
+from guided_diffusion.lookahead_search_guided_gaussian_diffusion import create_sampler  # changed to search guided gaussian diffusion
 
 
 from data.dataloader import get_dataset, get_dataloader
@@ -93,6 +93,8 @@ def main():
     task_config = load_yaml(args.task_config)
     search_algo_config = load_yaml(args.search_algo_config)
     reward_eval_config = load_yaml(args.reward_eval_config)
+
+    
     
     if args.timestep < 1000:
         diffusion_config["timestep_respacing"] = f"ddim{args.timestep}"
@@ -154,7 +156,7 @@ def main():
         if args.conditional_lookahead:
             dir_path += f"_cla_{args.num_lookahead_steps}"
         else:
-            dir_path += f"_uncla_{args.num_lookahead_steps}"
+            dir_path += f"_uncla_{args.num_lookahead_steps}_updated_lookahead"
 
     task_name = measure_config['operator']['name']
 
@@ -197,7 +199,7 @@ def main():
     extensions = ['*.jpg', '*.JPG', '*.jpeg', '*.JPEG', '*.png', '*.PNG']
     ref_faces = [file for ext in extensions for file in Path().rglob(ext)]
 
-    n_images = 2
+    n_images = 10
 
     images = []
     samples = []

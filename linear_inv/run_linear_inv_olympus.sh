@@ -12,7 +12,7 @@
 # # select your singularity shell (currently cuda10.2-cudnn7-py36)
 # singularity shell /mnt/lab_files/ECEN403-404/containers/cuda_10.2-cudnn7-py36.sif
 
-python ffhq_search.py \
+python ffhq_lookahead_search.py \
     --model_config=configs/model_config.yaml \
     --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
     --task_config=configs/super_resolution_config.yaml \
@@ -20,7 +20,6 @@ python ffhq_search.py \
     --timestep=200 \
     --scale=4 \
     --method="mpgd_wo_proj" \
-    --num_lookahead_steps=2 \
-    --perform_lookahead \
-    --conditional_lookahead \
+    --num_lookahead_steps=4 \
+    --perform_lookahead 
 

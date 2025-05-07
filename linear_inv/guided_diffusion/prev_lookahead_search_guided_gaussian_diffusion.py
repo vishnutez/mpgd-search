@@ -450,125 +450,6 @@ class DDIMx0(SpacedDiffusion):
             sample += sigma * noise
         
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}
-
-    def lookahead_p_sample(self,
-                      model,
-                      x_start,
-                      measurement,
-                      measurement_cond_fn,
-                      timesteps,
-                      save_root,
-                      record=False,
-                      conditional_lookahead=False,
-                      use_sigma=False,
-                      eta=0.5):
-        
-        img = x_start
-        device = x_start.device
-        model.eval()
-
-        prev_timesteps = [0] + timesteps
-        prev_timesteps = prev_timesteps[:-1]
-
-        print('timesteps: ', timesteps)
-        print('prev_timesteps: ', prev_timesteps)
-
-        # betas = self.betas[timesteps]
-        # alphas = 1.0 - betas
-
-        alphas_cumprod = self.alphas_cumprod[timesteps]
-        alphas_cumprod_prev = self.alphas_cumprod[prev_timesteps]
-
-        pbar = tqdm(list(range(len(timesteps)))[::-1])
-    
-        for idx in pbar:
-            curr_time = timesteps[idx]
-            time = torch.tensor([curr_time] * img.shape[0], device=device)
-            t = time
-            
-            x = img
-            # print('x: ', x.shape)
-            
-            out = self.p_mean_variance(model, x, t)
-            eps = self.predict_eps_from_x_start(x, t, out['pred_xstart'])  # wrong
-
-            curr_alpha_bar = extract_and_expand(alphas_cumprod, idx, x)
-            curr_alpha_bar_prev = extract_and_expand(alphas_cumprod_prev, idx, x)
-
-            # sqrt_one_by_curr_alpha_bar_minus_one = torch.sqrt(1 / curr_alpha_bar - 1)
-            # sqrt_recip_curr_alpha_bar = torch.sqrt(1 / curr_alpha_bar)
-
-            # model_output = model(x, self._scale_timesteps(t))
-            # In the case of "learned" variance, model will give twice channels.
-            # if model_output.shape[1] == 2 * x.shape[1]:
-            #     eps_manual, model_var_values = torch.split(model_output, x.shape[1], dim=1)
-
-            print(f'\n in lookahead loop, curr_alpha_bar: {curr_alpha_bar[0, 0, 0, 0]} prev_alpha_bar: {curr_alpha_bar_prev[0, 0, 0, 0]}')
-
-            # print('eps: ', eps.shape)
-            # print('sqrt_one_minus_curr_alpha_bar: ', sqrt_one_minus_curr_alpha_bar.shape)
-            # print('recip_sqrt_curr_alpha_bar: ', recip_sqrt_curr_alpha_bar.shape)
-
-            # pred_x0_start_manual = sqrt_recip_curr_alpha_bar * x - sqrt_one_by_curr_alpha_bar_minus_one * eps_manual
-            pred_x0_start = out['pred_xstart'].detach()
-
-            # def process_xstart(x):
-            #     x = x.clamp(-1, 1)
-            #     return x
-            
-            # pred_x0_start = process_xstart(pred_x0_start)  # clamp
-
-            # if use_sigma:  # if sigma is not provided, use the default
-            #     print('using sigma in the internal sampling loop')
-            #     sigma = (
-            #         eta
-            #         * torch.sqrt((1 - curr_alpha_bar_prev) / (1 - curr_alpha_bar))
-            #         * torch.sqrt(1 - curr_alpha_bar / curr_alpha_bar_prev)
-            #     )
-            # else:
-            #     print('not using sigma in the internal sampling loop')
-            #     sigma = 0
-            
-            x_0_hat = pred_x0_start.detach()
-
-            if conditional_lookahead:
-                # print('conditional generation in main loop')
-                with torch.enable_grad():
-                    x_0_hat = x_0_hat.requires_grad_()
-                    x0_t, distance = measurement_cond_fn(measurement=measurement,
-                                            x_0_hat=x_0_hat,
-                                            at=curr_alpha_bar_prev,
-                                            t=t/self.num_timesteps)
-            else:
-                # print('unconditional generation in lookahead internal loop')
-                x0_t = x_0_hat.detach()
-
-            # out["pred_xstart"] = x0_t
-            
-            # Equation 12.
-            
-            mean_pred = (
-                x0_t * torch.sqrt(curr_alpha_bar_prev)
-                + torch.sqrt(1 - curr_alpha_bar_prev) * eps
-            )
-            
-            img = mean_pred
-            # if use_sigma:
-            #     noise = torch.randn_like(x)
-            # if (t != 0).all() and use_sigma:
-            #     img += sigma * noise
-            img = img.detach_()
-           
-            # pbar.set_postfix({'distance': distance.mean().item()}, refresh=False)
-            
-            if record:
-                print('recording')
-                print('img: ', img.shape)
-                if idx % 20 == 0:
-                    file_path = os.path.join(save_root, f"progress/x_{str(idx).zfill(4)}.png")
-                    plt.imsave(file_path, clear_color(img[0].unsqueeze(0)))
-        
-        return img, x0_t
     
     @torch.no_grad()
     def p_sample_loop(self,
@@ -581,8 +462,10 @@ class DDIMx0(SpacedDiffusion):
                       search_algo=None,
                       reward_eval=None,
                       ref=None,
+                      pbar=None,
                       num_lookahead_steps=1,
-                      conditional_lookahead=False,
+                      conditional_generation=True,
+                      conditional_lookahead=True,
                       perform_lookahead=False,
                       use_sigma=True):
         """
@@ -594,12 +477,13 @@ class DDIMx0(SpacedDiffusion):
         model.eval()
         if reward_eval is not None and ref is not None:
             ref = ref.to(device)
-            # print('ref: ', ref)
+            print('ref: ', ref)
             reward_eval.set_ref_embeddings(ref)
-            # if reward_eval.ref_embd is None:
-            #     print('ref is not None, but ref_embd is None')
-        
-        pbar = tqdm(list(range(self.num_timesteps))[::-1])
+            if reward_eval.ref_embd is None:
+                print('ref is not None, but ref_embd is None')
+
+        if pbar is None:
+            pbar = tqdm(list(range(self.num_timesteps))[::-1])
     
         for idx in pbar:
             time = torch.tensor([idx] * img.shape[0], device=device)
@@ -609,7 +493,7 @@ class DDIMx0(SpacedDiffusion):
             #unconditional sampling
             # out = self.p_sample(x=img, t=time, model=model) #out = {x_t-1, x_0_hat}
             x=img
-            # print('x: ', x.shape)
+            print('x: ', x.shape)
             
             out = self.p_mean_variance(model, x, t)
 
@@ -617,18 +501,15 @@ class DDIMx0(SpacedDiffusion):
 
             alpha_bar = extract_and_expand(self.alphas_cumprod, t, x)
             alpha_bar_prev = extract_and_expand(self.alphas_cumprod_prev, t, x)
-
-            print(f'in main loop alpha_bar: {alpha_bar[0, 0, 0, 0]} alpha_bar_prev: {alpha_bar_prev[0, 0, 0, 0]}')
-
             if use_sigma:  # if sigma is not provided, use the default
-                print('using sigma in the main loop')
+                print('using sigma, in the main loop')
                 sigma = (
                     eta
                     * torch.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar))
                     * torch.sqrt(1 - alpha_bar / alpha_bar_prev)
                 )
             else:
-                # print('not using sigma, inside lookahead internal loop')
+                print('not using sigma, inside lookahead internal loop')
                 sigma = 0
             
             x_0_hat = out['pred_xstart'].detach()
@@ -649,27 +530,30 @@ class DDIMx0(SpacedDiffusion):
                 #     print('equals: ', equals)
                 # else:  # dont do lookahead
                 if perform_lookahead and idx > num_lookahead_steps:
-
-                    # print('performing lookahead')
-                    lookahead_steps = list(range(idx, 0, -idx // num_lookahead_steps))
-                    lookahead_steps = lookahead_steps[::-1]  # forward steps
-                    # print('lookahead_steps: ', lookahead_steps)
-                    
-                    x_prev_sample, x0_sample = self.lookahead_p_sample(model,
-                                                    x_start=x,
-                                                    measurement=measurement,
-                                                    measurement_cond_fn=measurement_cond_fn,
-                                                    record=False,
-                                                    save_root=save_root,
-                                                    timesteps=lookahead_steps,
-                                                    conditional_lookahead=conditional_lookahead,
+                    print('performing lookahead')
+                    internal_steps = list(range(idx, 0, -idx // num_lookahead_steps))
+                    print(f'idx: {idx}, internal_steps: {internal_steps}')
+                    internal_pbar = tqdm(internal_steps)
+                    x_prev_sample, x0_sample = self.p_sample_loop(model,
+                                                    x,
+                                                    measurement,
+                                                    measurement_cond_fn,
+                                                    False,
+                                                    save_root,
+                                                    search_algo=None,
+                                                    reward_eval=None,
+                                                    ref=None,
+                                                    pbar=internal_pbar,
+                                                    num_lookahead_steps=1,
+                                                    conditional_generation=conditional_lookahead,
+                                                    perform_lookahead=False,
                                                     use_sigma=False)  # doing conditional lookahead, use sigma=0
                     
                     equals = (x0_sample == x_0_hat).all()
                     print('x0_sample == x_0_hat?: ', equals)
                 else:
-                    # print('not performing lookahead')
-                    # print('x0_sample is x_0_hat')
+                    print('not performing lookahead')
+                    print('x0_sample is x_0_hat')
                     x0_sample = x_0_hat
 
                 rewards = reward_eval.get_reward(x0_sample)
@@ -678,13 +562,20 @@ class DDIMx0(SpacedDiffusion):
                 resampled_idxs = search_algo.search(rewards=rewards, step=forward_step)
                 x_0_hat = x_0_hat[resampled_idxs]  # resample idxs
 
-            with torch.enable_grad():
-                x_0_hat = x_0_hat.requires_grad_()
-                x0_t, distance = measurement_cond_fn(measurement=measurement,
-                                        x_0_hat=x_0_hat,
-                                        at=alpha_bar_prev,
-                                        t=t/self.num_timesteps)
-            
+
+            if conditional_generation:
+                print('conditional generation in main loop')
+                with torch.enable_grad():
+                    x_0_hat = x_0_hat.requires_grad_()
+                    x0_t, distance = measurement_cond_fn(measurement=measurement,
+                                            x_0_hat=x_0_hat,
+                                            at=alpha_bar_prev,
+                                            t=t/self.num_timesteps)
+            else:
+                print('unconditional generation in lookahead internal loop')
+                x0_t = x_0_hat.detach()
+                distance = torch.zeros(x0_t.shape[0])
+
             out["pred_xstart"] = x0_t
             
             # Equation 12.

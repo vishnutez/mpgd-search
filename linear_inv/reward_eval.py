@@ -196,21 +196,10 @@ class AdaFaceReward(Reward):
         at the given index in the dataset.
 
         Args:
-            index (int): Index of the reference image in the dataset list.
+            ref (torch.Tensor): Reference image tensor (B, C, H, W) in [-1, 1].
         """
-        
-        # # Load and preprocess image
-        # img = Image.open(self.files[index])
-        # trans = transforms.Compose([
-        #     transforms.ToTensor(),
-        #     transforms.Resize(self.res),
-        #     transforms.CenterCrop(self.res)
-        # ])
-        # img_tensor = (trans(img) * 2 - 1).to(self.device)
-        # if img_tensor.shape[0] == 1:
-        #     img_tensor = img_tensor.expand(3, -1, -1)
-
-        # Set gt embedding
+       
+        # Set ref embedding
         self.ref_embd = self._embeddings(ref).detach()
 
     def _embeddings(self, tensor_images: torch.Tensor) -> torch.Tensor:
