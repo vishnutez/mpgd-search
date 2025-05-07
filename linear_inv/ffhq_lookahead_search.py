@@ -62,7 +62,7 @@ def main():
     parser.add_argument('--scale', type=float, default=10)
     parser.add_argument('--method', type=str, default='mpgd_wo_proj')
     parser.add_argument('--save_dir', type=str, default='./outputs/ffhq/')
-    parser.add_argument('--eval_fn_list', type=str, nargs='+', default=['psnr', 'ssim', 'lpips', 'face_sim_l2'])
+    parser.add_argument('--eval_fn_list', type=str, nargs='+', default=['psnr', 'ssim', 'lpips', 'facenet_l2', 'adaface_l2'])
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--search_algo_config', type=str, default='./configs/search_resample.yaml')
     parser.add_argument('--reward_eval_config', type=str, default='./configs/reward_eval_facenet.yaml')
@@ -165,7 +165,7 @@ def main():
     out_path = os.path.join(args.save_dir, task_name, task_config['conditioning']['method'], dir_path)
     
     os.makedirs(out_path, exist_ok=True)
-    for img_dir in ['input', 'recon', 'progress', 'label']:
+    for img_dir in ['input', 'recon', 'progress', 'label', 'guid']:
         os.makedirs(os.path.join(out_path, img_dir), exist_ok=True)
 
     # Prepare dataloader
@@ -196,8 +196,12 @@ def main():
             transforms.Lambda(lambda t: (t * 2) - 1)
         ])
 
-    extensions = ['*.jpg', '*.JPG', '*.jpeg', '*.JPEG', '*.png', '*.PNG']
-    ref_faces = [file for ext in extensions for file in Path().rglob(ext)]
+    from glob import glob
+
+    ref_faces = sorted(glob(os.path.join(args.ref_faces_path + '/*.png')))
+
+    # extensions = ['*.jpg', '*.JPG', '*.jpeg', '*.JPEG', '*.png', '*.PNG']
+    # ref_faces = [file for ext in extensions for file in Path().rglob(ext)]
 
     n_images = 10
 
@@ -234,6 +238,10 @@ def main():
         x_start = torch.randn((num_particles, 3, img_size, img_size), device=device).requires_grad_()
         print(f"x_start shape: {x_start.shape}")
 
+        plt.imsave(os.path.join(out_path, 'input', f'{i:03}_input.png'), clear_color(y_n))
+        plt.imsave(os.path.join(out_path, 'label', f'{i:03}_label.png'), clear_color(ref_img))
+        plt.imsave(os.path.join(out_path, 'guid', f'{i:03}_guid.png'), clear_color(ref_face_img))
+
         sample, best_sample = sample_fn(x_start=x_start, 
                            measurement=y_n, 
                            record=False, 
@@ -250,8 +258,6 @@ def main():
         samples.append(sample)
         best_samples.append(best_sample)
 
-        plt.imsave(os.path.join(out_path, 'input', f'{i:03}_input.png'), clear_color(y_n))
-        plt.imsave(os.path.join(out_path, 'label', f'{i:03}_label.png'), clear_color(ref_img))
         plt.imsave(os.path.join(out_path, 'recon', f'{i:03}_best_recon.png'), clear_color(best_sample))
         
         for n, sample_n in enumerate(sample):

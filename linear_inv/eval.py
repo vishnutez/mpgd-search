@@ -235,21 +235,20 @@ class FaceSimilarityL2(EvalFn):
         return res
 
 
-from AdaFace import AdaFace 
+from reward_eval import AdaFaceReward
 
 @register_eval_fn('adaface_l2')
 class AdaFaceSimilarityL2(EvalFn):
     cmp = 'min'
     def __init__(self, batch_size=128):
         self.batch_size = batch_size
-        self.facenet = FaceRecognition(mtcnn_face=True, norm_order=2)
-        self.facenet.cuda()
+        self.adaface = AdaFaceReward()
 
     def evaluate_in_batch(self, gt, pred):
         batch_size = self.batch_size
         results = []
         for start in range(0, gt.shape[0], batch_size):
-            res = self.facenet.compute_loss(gt[start:start+batch_size], pred[start:start+batch_size])
+            res = self.adaface.compute_loss(gt[start:start+batch_size], pred[start:start+batch_size])
             results.append(res)
         results = torch.cat(results, dim=0)
         return results

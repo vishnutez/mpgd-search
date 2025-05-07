@@ -21,5 +21,8 @@ python ffhq_lookahead_search.py \
     --scale=4 \
     --method="mpgd_wo_proj" \
     --num_lookahead_steps=4 \
-    --perform_lookahead 
+    --perform_lookahead \
+    --save_dir='./outputs_same_refs/ffhq_lookahead_search/' \
+    --ref_faces_path='./data/samples/' \
+    # --best_of_n \
 

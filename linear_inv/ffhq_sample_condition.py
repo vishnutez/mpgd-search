@@ -56,7 +56,7 @@ def main():
     parser.add_argument('--scale', type=float, default=10)
     parser.add_argument('--method', type=str, default='mpgd_wo_proj')
     parser.add_argument('--save_dir', type=str, default='./outputs/ffhq/')
-    parser.add_argument('--eval_fn_list', type=str, nargs='+', default=['psnr', 'ssim', 'lpips', 'face_sim_l2'])
+    parser.add_argument('--eval_fn_list', type=str, nargs='+', default=['psnr', 'ssim', 'lpips', 'facenet_l2', 'adaface_l2'])
     parser.add_argument('--seed', type=int, default=42)
     args = parser.parse_args()
    

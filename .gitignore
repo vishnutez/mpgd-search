@@ -3,6 +3,7 @@ nonlinear/SD_style/output*/
 *logs*
 nonlinear/SD_style/src/*
 style-guid*
+AdaFace/
 
 # Results & checkpoints
 *results*

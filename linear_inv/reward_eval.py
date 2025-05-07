@@ -155,7 +155,7 @@ class AdaFaceReward(Reward):
         mtcnn_model: Face detector and aligner (MTCNN).
         res (int): Target image resolution for preprocessing.
     """
-    def __init__(self, pretrained_model: str, resolution: int = 256, device: str = 'cuda:0', **kwargs):
+    def __init__(self, pretrained_model: str = 'ir_50', resolution: int = 256, device: str = 'cuda:0', **kwargs):
         """
         Initializes the AdaFaceReward class.
 
@@ -235,6 +235,26 @@ class AdaFaceReward(Reward):
             embeddings[torch.tensor(failed_indices, device=embeddings.device)] = fallback
 
         return embeddings
+    
+
+    def compute_loss(self, x: torch.Tensor, gt: torch.Tensor) -> torch.Tensor:
+        """
+        Computes the loss between the generated image and the ground truth.
+
+        Args:
+            x (torch.Tensor): Generated image tensor.
+            gt (torch.Tensor): Ground truth image tensor.
+
+        Returns:
+            torch.Tensor: Computed loss value.
+        """
+        
+        gt_embd = self._embeddings(gt)
+        embd = self._embeddings(x)
+        difference = embd - gt_embd  # (N, 512)
+        loss = torch.linalg.norm(difference, dim=-1, ord=2)  # compute l2 norm
+        return loss
+        
 
 
         
