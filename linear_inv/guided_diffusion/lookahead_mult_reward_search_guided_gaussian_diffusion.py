@@ -480,7 +480,8 @@ class DDIMx0(SpacedDiffusion):
         alphas_cumprod_prev = self.alphas_cumprod[prev_timesteps]
 
         pbar = tqdm(list(range(len(timesteps)))[::-1])
-    
+
+        recorded = False
         for idx in pbar:
             curr_time = timesteps[idx]
             time = torch.tensor([curr_time] * img.shape[0], device=device)
@@ -564,9 +565,10 @@ class DDIMx0(SpacedDiffusion):
             if record:
                 print('recording')
                 print('img: ', img.shape)
-                if idx % 20 == 0:
-                    file_path = os.path.join(save_root, f"progress/x_{str(idx).zfill(4)}.png")
-                    plt.imsave(file_path, clear_color(img[0].unsqueeze(0)))
+                if idx == 0:  # record the last image
+                    for n in range(len(x0_t)):
+                        file_path = os.path.join(save_root, f"progress/la_x0_hat_{str(timesteps[-1]).zfill(4)}_sample_{n}.png")
+                        plt.imsave(file_path, clear_color(x0_t[n].unsqueeze(0)))
         
         return img, x0_t
     
@@ -662,12 +664,17 @@ class DDIMx0(SpacedDiffusion):
                     lookahead_steps = list(range(idx, 0, -idx // num_lookahead_steps))
                     lookahead_steps = lookahead_steps[::-1]  # forward steps
                     # print('lookahead_steps: ', lookahead_steps)
+
+                    if forward_step % 20 == 0:
+                        record_la = True
+                    else:
+                        record_la = False
                     
                     x_prev_sample, x0_sample = self.lookahead_p_sample(model,
                                                     x_start=x,
                                                     measurement=measurement,
                                                     measurement_cond_fn=measurement_cond_fn,
-                                                    record=False,
+                                                    record=record_la,
                                                     save_root=save_root,
                                                     timesteps=lookahead_steps,
                                                     conditional_lookahead=conditional_lookahead,
@@ -737,7 +744,7 @@ class DDIMx0(SpacedDiffusion):
                     # print('x_0_hat: ', x_0_hat.shape)
                     # print('measurement: ', measurement.shape)
                     # print('ref_embd: ', reward_eval.ref_embd.shape)
-                    curr_reward = reward.get_reward(x=x0_sample) / reward.scale
+                    curr_reward = reward.get_reward(x=img) / reward.scale
                     # print(f'computing final rewards, reward_name: {reward_name}, curr_reward: {curr_reward}, curr_scale: {reward.scale}')
                     final_rewards += curr_reward
             best_img = img[final_rewards.argmax()].unsqueeze(0)

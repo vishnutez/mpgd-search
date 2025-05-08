@@ -565,8 +565,8 @@ class DDIMx0(SpacedDiffusion):
                 print('recording')
                 print('img: ', img.shape)
                 if idx % 20 == 0:
-                    file_path = os.path.join(save_root, f"progress/x_{str(idx).zfill(4)}.png")
-                    plt.imsave(file_path, clear_color(img[0].unsqueeze(0)))
+                    file_path = os.path.join(save_root, f"progress_la/x_{str(idx).zfill(4)}.png")
+                    plt.imsave(file_path, clear_color(x0_t[0].unsqueeze(0)))
         
         return img, x0_t
     
