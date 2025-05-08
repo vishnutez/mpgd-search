@@ -729,7 +729,17 @@ class DDIMx0(SpacedDiffusion):
                     plt.imsave(file_path, clear_color(img[0].unsqueeze(0)))
 
         if reward_eval is not None:
-            final_rewards = reward_eval['adaface'].get_reward(img)  # compute the reward based on the reward 0
+            final_rewards = 0
+            for reward_name, reward in reward_eval.items():
+                if hasattr(reward, 'get_reward'):
+                    # print('reward: ', reward)
+                    # print('x0_sample: ', x0_sample.shape)
+                    # print('x_0_hat: ', x_0_hat.shape)
+                    # print('measurement: ', measurement.shape)
+                    # print('ref_embd: ', reward_eval.ref_embd.shape)
+                    curr_reward = reward.get_reward(x=x0_sample) / reward.scale
+                    # print(f'computing final rewards, reward_name: {reward_name}, curr_reward: {curr_reward}, curr_scale: {reward.scale}')
+                    final_rewards += curr_reward
             best_img = img[final_rewards.argmax()].unsqueeze(0)
             return img, best_img  
         

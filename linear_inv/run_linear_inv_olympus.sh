@@ -28,13 +28,13 @@ for num_particle in "${num_particles[@]}"; do
                 --model_config=configs/model_config.yaml \
                 --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
                 --task_config=configs/super_resolution_config.yaml \
-                --reward_eval_config=configs/rewards_adaface_measurement.yaml \
+                --reward_eval_config=configs/reward_facenet.yaml \
                 --timestep=200 \
                 --scale=4 \
                 --method="mpgd_wo_proj" \
                 --num_lookahead_steps=$num_lookahead_step \
                 --perform_lookahead \
-                --save_dir='./outputs_effect_of_temp/' \
+                --save_dir='./outputs_effect_of_temp_facenet/' \
                 --n_images=10 \
                 --temp=$temp  \
                 --num_particles=$num_particle

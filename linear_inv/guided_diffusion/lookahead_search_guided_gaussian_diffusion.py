@@ -596,8 +596,8 @@ class DDIMx0(SpacedDiffusion):
             ref = ref.to(device)
             # print('ref: ', ref)
             reward_eval.set_ref_embeddings(ref)
-            # if reward_eval.ref_embd is None:
-            #     print('ref is not None, but ref_embd is None')
+            if reward_eval.ref_embd is None:
+                print('ref is not None, but ref_embd is None')
         
         pbar = tqdm(list(range(self.num_timesteps))[::-1])
     
@@ -633,8 +633,10 @@ class DDIMx0(SpacedDiffusion):
             
             x_0_hat = out['pred_xstart'].detach()
 
+            forward_step = self.num_timesteps - 1 - idx
+
             # resample to pick where to start
-            if ref != None and search_algo is not None and reward_eval is not None and reward_eval.ref_embd is not None:
+            if search_algo is not None and forward_step % search_algo.resample_rate == 0:
                 # if num_lookahead_steps == 1:
                 #     x0_sample = x_0_hat.clone()
                 # else:
@@ -674,7 +676,7 @@ class DDIMx0(SpacedDiffusion):
 
                 rewards = reward_eval.get_reward(x0_sample)
 
-                forward_step = self.num_timesteps - 1 - idx
+                
                 resampled_idxs = search_algo.search(rewards=rewards, step=forward_step)
                 x_0_hat = x_0_hat[resampled_idxs]  # resample idxs
 
