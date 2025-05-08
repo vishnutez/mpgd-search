@@ -3,4 +3,4 @@ num_particles: 4
 num_steps: 200
 resample_rate: 2  # per steps
 annealing: constant
-init_temp: 0.5
+init_temp: 1

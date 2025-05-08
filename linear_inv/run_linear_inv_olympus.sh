@@ -12,17 +12,36 @@
 # # select your singularity shell (currently cuda10.2-cudnn7-py36)
 # singularity shell /mnt/lab_files/ECEN403-404/containers/cuda_10.2-cudnn7-py36.sif
 
-python ffhq_lookahead_search.py \
-    --model_config=configs/model_config.yaml \
-    --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
-    --task_config=configs/super_resolution_config.yaml \
-    --reward_eval_config=configs/reward_eval_adaface.yaml \
-    --timestep=200 \
-    --scale=4 \
-    --method="mpgd_wo_proj" \
-    --num_lookahead_steps=4 \
-    --perform_lookahead \
-    --save_dir='./outputs_same_refs/ffhq_lookahead_search/' \
-    --ref_faces_path='./data/samples/' \
-    # --best_of_n \
+# Define seeds
+temps=(2 1 0.5 0.2 0.1 0.05)
+num_particles=(2 4)
+num_lookahead_steps=(1 2 4)
+# Define the style reference path
+
+# Loop through each seed
+
+for num_particle in "${num_particles[@]}"; do
+    for num_lookahead_step in "${num_lookahead_steps[@]}"; do
+        for temp in "${temps[@]}"; do
+
+            python ffhq_la_search_mult_rewards.py \
+                --model_config=configs/model_config.yaml \
+                --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
+                --task_config=configs/super_resolution_config.yaml \
+                --reward_eval_config=configs/rewards_adaface_measurement.yaml \
+                --timestep=200 \
+                --scale=4 \
+                --method="mpgd_wo_proj" \
+                --num_lookahead_steps=$num_lookahead_step \
+                --perform_lookahead \
+                --save_dir='./outputs_effect_of_temp/' \
+                --n_images=10 \
+                --temp=$temp  \
+                --num_particles=$num_particle
+            # --ref_faces_path='./data/samples/' \
+            # --best_of_n \
+
+        done
+    done
+done
 

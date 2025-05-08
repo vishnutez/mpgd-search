@@ -30,8 +30,48 @@ def get_reward_eval(name: str, **kwargs):
         raise NameError(f"Name {name} is not defined!")
     return __REWARD_METHOD__[name](**kwargs)
 
+class Reward:
+    """
+        Evaluation module for computing evaluation metrics.
+    """
 
-class Reward(ABC):
+    def __init__(self, reward_fn_list, config_list):
+        """
+            Initializes the evaluator with the ground truth and measurement.
+
+            Parameters:
+                eval_fn_list (tuple): List of evaluation functions to use.
+        """
+        super().__init__()
+        self.reward_fn = {}
+        for reward_fn in reward_fn_list:
+            self.reward_fn[reward_fn.name] = reward_fn(**config_list[reward_fn.name])
+
+    def set_ref_embeddings(self, ref, **kwargs):
+        for reward_fn_name, reward_fn in self.reward_fn.items():
+            if hasattr(reward_fn, 'set_ref_embeddings'):
+                reward_fn.set_ref_embeddings(ref, **kwargs)  # set ref embeddings
+
+
+    def __call__(self, x):
+        """
+            Computes evaluation metrics for the given input.
+
+            Parameters:
+                x (torch.Tensor): Input tensor.
+                reduction (str): Reduction method ('mean' or 'none').
+
+            Returns:
+                dict: Dictionary of evaluation results.
+        """
+        reward = 0
+        for reward_fn_name, reward_fn in self.reward_fn.items():
+            if hasattr(reward_fn, 'get_reward'):
+                reward += reward_fn.scale * reward_fn.get_reward(x)
+        return reward
+
+
+class RewardFn(ABC):
     """
     Abstract base class for all reward functions used in guided diffusion or sampling.
 
@@ -63,7 +103,7 @@ class Reward(ABC):
         pass
 
     @abstractmethod
-    def get_reward(self, particles, **kwargs) -> torch.Tensor:
+    def get_reward(self, **kwargs) -> torch.Tensor:
         """
         Compute and return the reward signal given inputs.
 
@@ -81,8 +121,47 @@ class Reward(ABC):
         pass
 
 
+@register_reward_method(name='measurement')
+class Measurement(RewardFn):
+    """
+    Reward function based on measurement similarity.
+
+    This class computes a reward signal based on the similarity of measurements
+    between the input and a reference measurement. The reward is computed as the
+    negative L2 distance between the two measurements.
+
+    Args:
+        ref_measurement (torch.Tensor): Reference measurement for comparison.
+        device (str): Device to run the model on ('cpu' or 'cuda').
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.device = kwargs.get('device', 'cuda')
+        self.scale = kwargs.get('scale', 1.0)
+
+    def set_ref_embeddings(self, measurement, operator, **kwargs):
+        self.measurement = measurement
+        self.operator = operator
+
+    def get_reward(self, x):
+        """
+        Compute the reward based on the negative L2 distance to the reference measurement.
+
+        Args:
+            x (torch.Tensor): Input measurement tensor.
+
+        Returns:
+            torch.Tensor: Reward signal based on negative L2 distance.
+        """
+        difference = self.operator.forward(x) - self.measurement
+        difference_vec = difference.reshape(x.shape[0], -1)
+        loss = torch.linalg.norm(difference_vec, axis=-1, ord=2) ** 2
+        return -loss
+
+
 @register_reward_method(name='facenet')
-class FacenetReward(Reward):
+class FacenetReward(RewardFn):
     """
     Reward function based on FaceNet embeddings.
 
@@ -100,8 +179,9 @@ class FacenetReward(Reward):
         self.device = kwargs.get('device', 'cuda')
         self.facenet = FaceRecognition(mtcnn_face=True, norm_order=2).to(self.device)
         self.ref_embd = None
+        self.scale = kwargs.get('scale', 1.0)
 
-    def set_ref_embeddings(self, ref):
+    def set_ref_embeddings(self, ref, **kwargs):
         self.ref_embd = self.facenet(ref)
 
     def get_reward(self, x):
@@ -117,7 +197,6 @@ class FacenetReward(Reward):
         # Compute the embedding for the input image
 
         embd = []
-
         embd_dim = self.ref_embd.shape[1]
         
         for n, xn in enumerate(x):
@@ -132,12 +211,12 @@ class FacenetReward(Reward):
         embd = torch.stack(embd, dim=0)  # (1, 512) -> (N, 512)
 
         difference = embd - self.ref_embd  # (N, 512)
-        loss = torch.linalg.norm(difference, dim=-1, ord=2) ** 2
+        loss = torch.linalg.norm(difference, dim=-1, ord=2) ** 2 
         return -loss
 
 
 @register_reward_method('adaface')
-class AdaFaceReward(Reward):
+class AdaFaceReward(RewardFn):
     """
     Reward function based on AdaFace facial embeddings.
 
@@ -173,6 +252,7 @@ class AdaFaceReward(Reward):
         self.ref_embd = None
         self.res = resolution
         self.name = 'adaface'
+        self.scale = kwargs.get('scale', 1.0)
 
     def get_reward(self, x, **kwargs) -> torch.Tensor:
         """
@@ -190,7 +270,7 @@ class AdaFaceReward(Reward):
         loss = torch.linalg.norm(difference, dim=-1, ord=2) ** 2
         return -loss
 
-    def set_ref_embeddings(self, ref) -> None:
+    def set_ref_embeddings(self, ref, **kwargs) -> None:
         """
         Sets the ground-truth embedding by loading and embedding the additional image
         at the given index in the dataset.

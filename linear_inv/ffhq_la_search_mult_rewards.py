@@ -14,7 +14,7 @@ from guided_diffusion.condition_methods import get_conditioning_method
 from guided_diffusion.measurements import get_noise, get_operator
 from guided_diffusion.unet import create_model
 
-from guided_diffusion.lookahead_search_guided_gaussian_diffusion import create_sampler  # changed to search guided gaussian diffusion
+from guided_diffusion.lookahead_mult_reward_search_guided_gaussian_diffusion import create_sampler  # changed to search guided gaussian diffusion
 
 
 from data.dataloader import get_dataset, get_dataloader
@@ -65,7 +65,7 @@ def main():
     parser.add_argument('--eval_fn_list', type=str, nargs='+', default=['psnr', 'ssim', 'lpips', 'facenet_l2', 'adaface_l2'])
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--search_algo_config', type=str, default='./configs/search_resample.yaml')
-    parser.add_argument('--reward_eval_config', type=str, default='./configs/reward_eval_facenet.yaml')
+    parser.add_argument('--reward_eval_config', type=str, default='./configs/rewards_adaface_measurement.yaml')
     parser.add_argument('--ref_faces_path', type=str, default='./data/ref-face-images/')
 
     # additional args for lookahead 
@@ -74,6 +74,8 @@ def main():
     parser.add_argument('--conditional_lookahead', action='store_true')
     parser.add_argument('--perform_lookahead', action='store_true')
     parser.add_argument('--n_images', type=int, default=1)
+    parser.add_argument('--temp', type=float, default=1.0)
+    parser.add_argument('--num_particles', type=int, default=1)
 
     args = parser.parse_args()
    
@@ -92,8 +94,7 @@ def main():
     model_config = load_yaml(args.model_config)
     diffusion_config = load_yaml(args.diffusion_config)
     task_config = load_yaml(args.task_config)
-    search_algo_config = load_yaml(args.search_algo_config)
-    reward_eval_config = load_yaml(args.reward_eval_config)    
+    search_algo_config = load_yaml(args.search_algo_config)    
     
     if args.timestep < 1000:
         diffusion_config["timestep_respacing"] = f"ddim{args.timestep}"
@@ -130,12 +131,18 @@ def main():
 
 
     print(f"Search algorithm: {search_algo_config['name']}")
-    print(f"Reward evaluation: {reward_eval_config['name']}")
 
     
-    reward_eval = get_reward_eval(**reward_eval_config)
-    search_algo = get_search_algo(**search_algo_config)
+    reward_configs = load_yaml(args.reward_eval_config)
+    reward_eval = {}
+    from reward_eval import get_reward_eval
+    for reward_config in reward_configs:
+        reward = get_reward_eval(**reward_config)
+        reward_eval[reward_config['name']] = reward
 
+    search_algo_config['num_particles'] = args.num_particles  # change the number of particles
+    search_algo_config['init_temp'] = args.temp  # change the init temp
+    search_algo = get_search_algo(**search_algo_config)  # fixed
     num_particles = search_algo_config['num_particles']
 
     if args.best_of_n:
@@ -155,7 +162,10 @@ def main():
         if args.conditional_lookahead:
             dir_path += f"_cla_{args.num_lookahead_steps}"
         else:
-            dir_path += f"_uncla_{args.num_lookahead_steps}_updated_lookahead"
+            dir_path += f"_uncla_{args.num_lookahead_steps}"
+
+    if search_algo is not None:
+        dir_path += f"_temp_{search_algo_config['init_temp']}"
 
     task_name = measure_config['operator']['name']
 
@@ -250,7 +260,8 @@ def main():
                            ref=ref_face_img,
                            num_lookahead_steps=args.num_lookahead_steps,
                            conditional_lookahead=args.conditional_lookahead,
-                           perform_lookahead=args.perform_lookahead,)
+                           perform_lookahead=args.perform_lookahead,
+                           operator=operator)
 
     
         images.append(ref_img)
@@ -274,6 +285,20 @@ def main():
     markdown_table = f'arguments: \n \n'
     for arg, value in vars(args).items():
         markdown_table += f'- **{arg}**: {value} \n '
+
+    # print reward eval configs
+    markdown_table += f' \n reward eval configs: \n \n'
+    for reward_config in reward_configs:
+        markdown_table += f'- **{reward_config["name"]}**: \n'
+        for key, value in reward_config.items():
+            if key != 'name':
+                markdown_table += f'  - {key}: {value} \n'
+    markdown_table += f' \n \n'
+    # print search algo configs
+    markdown_table += f' \n search algo configs: \n \n'
+    for key, value in search_algo_config.items():
+        markdown_table += f'- **{key}**: {value} \n'
+    markdown_table += f' \n \n'
 
     for n in range(num_particles):
         idxs = np.arange(n_uniq_samples) * num_particles + n
