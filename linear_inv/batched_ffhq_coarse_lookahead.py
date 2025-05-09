@@ -77,6 +77,7 @@ def main():
     parser.add_argument('--temp', type=float, default=1.0)
     parser.add_argument('--num_particles', type=int, default=1)
     parser.add_argument('--batch_size', type=int, default=8)
+    parser.add_argument('--resample_rate', type=int, default=4)
     parser.add_argument('--record_inside_la', action='store_true', help='Record the lookahead samples')
 
     args = parser.parse_args()
@@ -144,6 +145,7 @@ def main():
 
     search_algo_config['num_particles'] = args.num_particles  # change the number of particles
     search_algo_config['init_temp'] = args.temp  # change the init temp
+    search_algo_config['resample_rate'] = args.resample_rate  # change the resample rate
     search_algo = get_search_algo(**search_algo_config)  # fixed
     num_particles = search_algo_config['num_particles']
 
@@ -168,6 +170,7 @@ def main():
 
     if search_algo is not None:
         dir_path += f"_temp_{search_algo_config['init_temp']}"
+        dir_path += f"_resample_rate_{search_algo_config['resample_rate']}"
 
     task_name = measure_config['operator']['name']
 

@@ -162,9 +162,7 @@ class ResampleSearch(Search):
             
 
             for i in range(0, len(rewards), self.num_particles):
-                norm_rewards[i: i + self.num_particles] = (rewards[i: i + self.num_particles] - np.min(rewards[i: i + self.num_particles])) / (
-                    np.max(rewards[i: i + self.num_particles]) - np.min(rewards[i: i + self.num_particles]) + 1e-8
-                )
+                norm_rewards[i: i + self.num_particles] = (rewards[i: i + self.num_particles] - np.max(rewards[i: i + self.num_particles]))
 
                 values[i: i + self.num_particles] = np.exp(norm_rewards[i: i + self.num_particles] / temp)
                 p = values[i: i + self.num_particles]  / np.sum(values[i: i + self.num_particles])
