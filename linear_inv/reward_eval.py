@@ -158,6 +158,44 @@ class Measurement(RewardFn):
         difference_vec = difference.reshape(x.shape[0], -1)
         loss = torch.linalg.norm(difference_vec, axis=-1, ord=2) ** 2
         return -loss
+    
+
+@register_reward_method(name='genie')
+class GenieReward(RewardFn):
+    """
+    Reward function based on Genie embeddings.
+
+    This class computes a reward signal based on the similarity of Genie embeddings
+    between the input and a reference measurement. The reward is computed as the
+    negative L2 distance between the two measurements.
+
+    Args:
+        ref_measurement (torch.Tensor): Reference measurement for comparison.
+        device (str): Device to run the model on ('cpu' or 'cuda').
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.device = kwargs.get('device', 'cuda')
+        self.scale = kwargs.get('scale', 1.0)
+
+    def set_ref_embeddings(self, ref, **kwargs):
+        self.ref = ref
+
+    def get_reward(self, x):
+        """
+        Compute the reward based on the negative L2 distance to the reference measurement.
+
+        Args:
+            x (torch.Tensor): Input measurement tensor.
+
+        Returns:
+            torch.Tensor: Reward signal based on negative L2 distance.
+        """
+        difference = self.ref - x
+        difference_vec = difference.reshape(x.shape[0], -1)
+        loss = torch.linalg.norm(difference_vec, axis=-1, ord=2) ** 2
+        return -loss
 
 
 @register_reward_method(name='facenet')
