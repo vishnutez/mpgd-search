@@ -172,7 +172,7 @@ class EvalFn(ABC):
     
 
 # eval metrics for style transfer task
-from clip.base_clip import CLIPEncoder
+from ldm.models.diffusion.clip.base_clip import CLIPEncoder
 from torchvision import transforms
 
 @register_eval_fn('style_loss')

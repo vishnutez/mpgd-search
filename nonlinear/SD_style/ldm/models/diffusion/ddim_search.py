@@ -92,7 +92,6 @@ class DDIMSampler(object):
                image_encoder=None,
                tt=1,
                rho=15,
-               text=None,
                ref=None,
                search_algo=None,
                reward_eval=None
@@ -131,7 +130,6 @@ class DDIMSampler(object):
                                                     unconditional_conditioning=unconditional_conditioning,
                                                     tt=tt,
                                                     rho=rho,
-                                                    text=text,
                                                     ref=ref,
                                                     search_algo=search_algo,
                                                     reward_eval=reward_eval,
@@ -201,8 +199,9 @@ class DDIMSampler(object):
                     D_x0_t = self.model.decode_first_stage(pred_x0)
                 rewards = reward_eval.get_reward(x=D_x0_t)
             if search_algo is not None:
-                forward_step = timesteps-i
-                resampled_idxs = search_algo.search(rewards=rewards, step=forward_step)
+                # forward_step = timesteps-i
+                print('forward_step:', index)
+                resampled_idxs = search_algo.search(rewards=rewards, step=index)
                 img = img[resampled_idxs]
                 pred_x0 = pred_x0[resampled_idxs]
             

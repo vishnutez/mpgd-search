@@ -119,6 +119,7 @@ def seed_everything(seed):
     except ImportError:
         pass
 
+import yaml
 def load_yaml(file_path: str) -> dict:
     with open(file_path) as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
@@ -147,7 +148,7 @@ def main():
         type=str,
         nargs="?",
         help="dir to write results to",
-        default="outputs_2/"
+        default="outputs_search/"
     )
     parser.add_argument(
         "--ddim_steps",
@@ -281,7 +282,7 @@ def main():
     parser.add_argument(
         "--reward_eval_config",
         type=str,
-        default='configs/reward_eval_style_loss.yaml',
+        default='configs/reward_style.yaml',
     )
     parser.add_argument(
         "--eval_fn_list",
@@ -289,6 +290,17 @@ def main():
         nargs="+",
         default=["style_loss", "clip_score"],
         help="list of eval fn names",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=4,
+        help="batch size for each eval fn",
+    )
+    parser.add_argument(
+        "--num_particles",
+        type=int,
+        default=4,
     )
    
     
@@ -304,7 +316,7 @@ def main():
     reward_eval = get_reward_eval(**reward_eval_config)
     search_algo = get_search_algo(**search_algo_config)
 
-    num_particles = search_algo_config['num_particles']
+    search_algo_config['num_particles'] = opt.num_particles
     search_algo_name = search_algo_config['name']
 
     from st_eval import get_eval_fn, Evaluator
@@ -348,7 +360,7 @@ def main():
     wm_encoder.set_watermark('bytes', wm.encode('utf-8'))
 
     # opt.n_samples = 2 # current version only supprt batchsize 1
-    batch_size = num_particles
+    batch_size = opt.batch_size
     # Get current timestamp
     timestamp = datetime.now().strftime("%y_%m_%d_%H_%M_%S")
     # sample_path = os.path.join(outpath, f"{timestamp}_ddim{opt.ddim_steps}_tt{opt.tt}_rho{opt.rho}")
@@ -361,7 +373,7 @@ def main():
 
     start_code = None
     if opt.fixed_code:
-        start_code = torch.randn([num_particles, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
+        start_code = torch.randn([batch_size, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
         
     image_encoder = CLIPEncoder().cuda()
 
@@ -388,7 +400,10 @@ def main():
                         transforms.ToTensor(),
                         transforms.Normalize([0.5], [0.5])
                     ])
-                    ref = transforms(ref_style_img).unsqueeze(0).to(device)  # convert ref style img to tensor
+                    ref = transforms(ref_style_img).to(device)  # convert ref style img to tensor
+                    ref = ref.unsqueeze(0)  # add batch dimension
+
+                    print('ref style img:', ref.shape)
 
                     uc = None
                     if opt.scale != 1.0:
@@ -398,8 +413,8 @@ def main():
                     c = model.get_learned_conditioning(prompts)
                     shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
                     samples_ddim, intermediates = sampler.sample(S=opt.ddim_steps,
+                                                        batch_size=batch_size,
                                                         conditioning=c,
-                                                        batch_size=opt.n_samples,
                                                         shape=shape,
                                                         verbose=False,
                                                         unconditional_guidance_scale=opt.scale,
@@ -409,7 +424,6 @@ def main():
                                                         image_encoder=image_encoder,
                                                         tt = opt.tt,
                                                         rho = opt.rho,
-                                                        text = opt.prompt,
                                                         reward_eval=reward_eval,
                                                         search_algo=search_algo,
                                                         ref=ref,                                                    
@@ -424,7 +438,7 @@ def main():
                     x_checked_image_torch = torch.from_numpy(x_checked_image).permute(0, 3, 1, 2)
 
                     for n, x_sample in enumerate(x_checked_image_torch):
-                        results = evaluator.eval(gt=ref, pred=x_sample, batch_size=1)
+                        results = evaluator.report(gt=ref, pred=x_sample, batch_size=1)
                         markdown_text = evaluator.display(results)
                         markdown_table += '\n' + markdown_text
 

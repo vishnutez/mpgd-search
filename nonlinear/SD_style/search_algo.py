@@ -78,7 +78,6 @@ class Search(ABC):
         """
         raise NotImplementedError
     
-
 @register_search_method('resample')
 class ResampleSearch(Search):
     """
@@ -97,11 +96,12 @@ class ResampleSearch(Search):
 
     def search(self, rewards: torch.Tensor, step: int, **kwargs) -> np.ndarray:
 
-        idxs = np.arange(self.num_particles)
-        print(f"idxs: {idxs}")
+        batch_size = rewards.shape[0]
+        resampled_idxs = np.arange(batch_size)
+        print(f"resampled_idxs: {resampled_idxs}")
 
         if step % self.resample_rate != 0 or step == 0:
-            return idxs
+            return resampled_idxs
         else:
             print('resampling')
             
@@ -111,16 +111,76 @@ class ResampleSearch(Search):
 
             # normalize the rewards
             rewards = rewards.cpu().detach().numpy()
-            norm_rewards = (rewards - np.min(rewards)) / (np.max(rewards) - np.min(rewards) + 1e-8)
-            values = np.exp(norm_rewards / temp)
-            p = values / np.sum(values)
+            norm_rewards = np.zeros_like(rewards)
 
-            print(f"p: {p}")
+            values = np.zeros(batch_size)
 
-            # resample based on values
-            resampled_idxs = np.random.choice(idxs, p=p, size=self.num_particles, replace=True)
+            print(f"rewards: {rewards}")
+            
+
+            for i in range(0, len(rewards), self.num_particles):
+                norm_rewards[i: i + self.num_particles] = (rewards[i: i + self.num_particles] - np.max(rewards[i: i + self.num_particles]))
+
+                print(f"norm_rewards: {norm_rewards[i: i + self.num_particles]}")  # will be all negative
+
+                values[i: i + self.num_particles] = np.exp(norm_rewards[i: i + self.num_particles] / temp)
+
+                print(f"values: {values[i: i + self.num_particles]}")  # will be all  and very small
+
+                p = values[i: i + self.num_particles]  / np.sum(values[i: i + self.num_particles])
+
+                print(f"p: {p}")
+                # resample based on values
+                resampled_idxs[i: i + self.num_particles] = np.random.choice(np.arange(i, i + self.num_particles),
+                                                                              p=p, size=self.num_particles, replace=True)
+
             print(f"resampled_idxs: {resampled_idxs}")
             return resampled_idxs
+        
+
+#  # odler version       
+# @register_search_method('resample')
+# class ResampleSearch(Search):
+#     """
+#     ResampleSearch is a search-based guidance method that selects particles based on
+#     their reward scores. It uses a resampling strategy to select particles with higher
+#     rewards more frequently.
+
+#     Attributes:
+#         num_particles (int): Number of particles to track.
+#         num_steps (int): Total number of steps in the sampling process.
+#         resample_rate (int): Rate at which to resample particles.
+#         annealing (str): Type of annealing schedule to use ('constant', 'linear', 'exponential').
+#     """
+#     def __init__(self, num_particles: int, num_steps: int, resample_rate: int, annealing: str, **kwargs):
+#         super().__init__(num_particles, num_steps, resample_rate, annealing, **kwargs)
+
+#     def search(self, rewards: torch.Tensor, step: int, **kwargs) -> np.ndarray:
+
+#         idxs = np.arange(self.num_particles)
+#         print(f"idxs: {idxs}")
+
+#         if step % self.resample_rate != 0 or step == 0:
+#             return idxs
+#         else:
+#             print('resampling')
+            
+#             temp = self.annealing_schedule[step // self.resample_rate]
+
+#             print('temp:', temp)
+
+#             # normalize the rewards
+#             rewards = rewards.cpu().detach().numpy()
+#             norm_rewards = (rewards - np.min(rewards)) / (np.max(rewards) - np.min(rewards) + 1e-8)
+#             values = np.exp(norm_rewards / temp)
+#             p = values / np.sum(values)
+
+#             print(f"p: {p}")
+
+#             # resample based on values
+#             resampled_idxs = np.random.choice(idxs, p=p, size=self.num_particles, replace=True)
+#             print(f"resampled_idxs: {resampled_idxs}")
+#             return resampled_idxs
 
 
 @register_search_method('group-meeting')

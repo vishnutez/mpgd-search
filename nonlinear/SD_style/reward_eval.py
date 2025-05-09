@@ -106,13 +106,21 @@ class StyleReward(Reward):
 
         x = torch.nn.functional.interpolate(x, size=(self.res, self.res), mode='bicubic')
         x = self.clip_encoder.preprocess(x)
-        x = torch.unsqueeze(x, 0)
+        if len(x.shape) == 3:
+            x = x.unsqueeze(0)  # Add batch dimension
         x = x.to(self.device)
+
+        print('x.shape', x.shape)
 
         embd_out, embds = self.clip_encoder.clip_model.encode_image_with_features(x)
         embd = embds[2][1:, :, :]
         embd_mat = embd.permute(1, 0, 2)
         embd_mat_t = embd_mat.permute(0, 2, 1)
+
+        print('embd_mat.shape', embd_mat.shape)
+        print('embd_mat_t.shape', embd_mat_t.shape)
+
+        # Compute the Gram matrix
         embd_gram_mat = torch.bmm(embd_mat_t, embd_mat)
 
         return embd_gram_mat
@@ -132,7 +140,12 @@ class StyleReward(Reward):
         """
       
         embd = self._embeddings(x)
-        loss = torch.linalg.norm(embd - self.ref_embd, dim=(-1, -2), ord=2) ** 2
+        print('embd.shape', embd.shape)
+        print('ref_embd.shape', self.ref_embd.shape)
+        difference = embd - self.ref_embd  # (N, 512)
+        difference_vec = difference.reshape(difference.shape[0], -1)  # Flatten the last two dimensions
+        loss = torch.linalg.norm(difference_vec, dim=-1, ord=2)
+        print('loss.shape', loss.shape)
         return -loss
     
     def compute_style_loss(self, image, ref):
@@ -148,7 +161,9 @@ class StyleReward(Reward):
         """
         embd_ref = self._embeddings(ref)
         embd_image = self._embeddings(image)
-        loss = torch.linalg.norm(embd_ref - embd_image, dim=(-1, -2), ord=2)
+        difference = embd_ref - embd_image  # (N, 512)
+        difference_vec = difference.reshape(difference.shape[0], -1)  # Flatten the last two dimensions
+        loss = torch.linalg.norm(difference_vec, dim=-1, ord=2)
         return loss
     
     

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=dm      # Job name
+#SBATCH --job-name=dm-st      # Job name
 #SBATCH --mail-type=BEGIN,END,FAIL            # Mail events (NONE, BEGIN, END, FAIL, ALL)
 #SBATCH --mail-user=vishnukunde@tamu.edu  #Where to send mail    
 #SBATCH --ntasks=8                      # Run on a 8 cpus (max)
@@ -17,7 +17,9 @@ python style_search.py --style_ref_path './style_images/' \
                     --scale 5.0 --rho 15 --tt 1 --seed 42 \
                     --prompt "a knight holding his sword" \
                     --fixed_code \
-                    --outdir './outputs/'
+                    --outdir './outputs_batched/' \
+                    --num_particles=2 \
+                    --batch_size=4 \
                     
 # # Define seeds
 # seeds=(42 43 44 45 46 47 48 49 50 51)
