@@ -61,6 +61,12 @@ class Evaluator:
         broadcasted_shape = torch.broadcast_shapes(x.shape, gt.shape)
         x0_flatten = gt.expand(broadcasted_shape).flatten(0, 1)
         x_flatten = x.expand(broadcasted_shape).flatten(0, 1)
+
+        print('x0_flatten', x0_flatten.shape)
+        print('x_flatten', x_flatten.shape)
+
+        print('broadcasted_shape', broadcasted_shape)
+        
         y_flatten = measurement.expand((broadcasted_shape[0], *measurement.shape)).flatten(0, 1)
 
         for key, fn in self.eval_fn.items():
@@ -86,7 +92,7 @@ class Evaluator:
         table.add_row(['avg' for _ in result_dicts.keys()])
         table.add_row(summary.values())
 
-        return table.get_string()
+        return table.get_string(), summary
 
     def log_wandb(self, result_dicts, batch_size):
         for s in range(batch_size):

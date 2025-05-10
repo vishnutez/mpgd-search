@@ -194,11 +194,11 @@ def main():
     dataset = get_dataset(**data_config, transforms=transform)
     loader = get_dataloader(dataset, batch_size=1, num_workers=0, train=False)
 
-    # # Exception) In case of inpainting, we need to generate a mask 
-    # if measure_config['operator']['name'] == 'inpainting':
-    #     mask_gen = mask_generator(
-    #        **measure_config['mask_opt']
-    #     )
+    # Exception) In case of inpainting, we need to generate a mask 
+    if measure_config['operator']['name'] == 'inpainting':
+        mask_gen = mask_generator(
+           **measure_config['mask_opt']
+        )
 
     from eval import get_eval_fn, Evaluator
 

@@ -291,6 +291,8 @@ class AdaFaceReward(RewardFn):
         self.res = resolution
         self.name = 'adaface'
         self.scale = kwargs.get('scale', 1.0)
+        self.gradient = kwargs.get('gradient', False)
+        
 
     def get_reward(self, x, **kwargs) -> torch.Tensor:
         """
@@ -307,6 +309,26 @@ class AdaFaceReward(RewardFn):
         difference = embd - self.ref_embd  # (N, 512)
         loss = torch.linalg.norm(difference, dim=-1, ord=2) ** 2
         return -loss
+    
+
+    def get_reward_and_gradient(self, x, **kwargs):
+        """
+        Computes the loss between the generated image and the ground truth.
+
+        Args:
+            x (torch.Tensor): Generated image tensor.
+
+        Returns:
+            torch.Tensor: Computed reward value.
+            torch.Tensor: Gradient of the reward with respect to the input image.
+        """
+
+        x.requires_grad_()        
+        reward = self.get_reward(x, **kwargs)
+        grad = torch.autograd.grad(reward.sum(), x)[0]
+        x.detach_()
+        return reward, grad
+    
 
     def set_ref_embeddings(self, ref, **kwargs) -> None:
         """
@@ -372,6 +394,9 @@ class AdaFaceReward(RewardFn):
         difference = embd - gt_embd  # (N, 512)
         loss = torch.linalg.norm(difference, dim=-1, ord=2)  # compute l2 norm
         return loss
+    
+
+    
         
 
 
