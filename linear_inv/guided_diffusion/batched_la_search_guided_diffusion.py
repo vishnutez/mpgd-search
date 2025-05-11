@@ -726,15 +726,6 @@ class DDIMx0(SpacedDiffusion):
                                         x_0_hat=x_0_hat,
                                         at=alpha_bar_prev,
                                         t=t/self.num_timesteps)
-                
-                for reward_name, reward in reward_eval.items():
-                        # print('reward: ', reward)
-                        # print('x0_sample: ', x0_sample.shape)
-                        # print('x_0_hat: ', x_0_hat.shape)
-                        # print('measurement: ', measurement.shape)
-                        # print('ref_embd: ', reward_eval.ref_embd.shape)
-                        if reward.gradient:
-                            curr_reward = reward.get_reward(x=x0_sample) / reward.scale
             
             out["pred_xstart"] = x0_t
             

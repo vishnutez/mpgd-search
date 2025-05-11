@@ -14,7 +14,7 @@ from guided_diffusion.condition_methods import get_conditioning_method
 from guided_diffusion.measurements import get_noise, get_operator
 from guided_diffusion.unet import create_model
 
-from guided_diffusion.batched_la_search_guided_diffusion import create_sampler  # changed to search guided gaussian diffusion
+from guided_diffusion.batched_si_guided_diffusion import create_sampler  # changed to search guided gaussian diffusion
 
 
 from data.dataloader import get_dataset, get_dataloader
@@ -176,6 +176,15 @@ def main():
     if search_algo is not None:
         dir_path += f"_temp_{search_algo_config['init_temp']}"
         dir_path += f"_resample_rate_{search_algo_config['resample_rate']}"
+
+    for reward_name, reward in reward_eval.items():
+        
+        dir_path += f"_{reward_name}"
+        if reward.gradient:
+            dir_path += f"_grad_{reward.gradient_scale}"
+        if search_algo is not None:
+            dir_path += f"_search"
+
 
     task_name = measure_config['operator']['name']
 

@@ -728,9 +728,10 @@ class DDIMx0(SpacedDiffusion):
                                         t=t/self.num_timesteps)
                 for reward_name, reward in reward_eval.items():
                     print('taking gradients')
-                    if reward.gradient:
-                        reward_val, grad = reward.get_reward_and_gradient(x=x0_t)
-                        x0_t = x0_t - reward.gradient_scale * grad / alpha_bar_prev.sqrt()
+                    if reward.gradient and (forward_step > 0.3*self.num_timesteps and forward_step < 0.7*self.num_timesteps):  # take gradients only in the middle
+                        reward_val, grad = reward.get_reward_and_gradient(x=x_0_hat)  # compute gradient wrt x0_hat not x0_t/y
+                        x0_t = x0_t + reward.gradient_scale * grad / alpha_bar_prev.sqrt()
+                    x0_t.detach()
 
             
             out["pred_xstart"] = x0_t

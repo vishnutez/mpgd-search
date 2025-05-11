@@ -218,11 +218,13 @@ class FacenetReward(RewardFn):
         self.facenet = FaceRecognition(mtcnn_face=True, norm_order=2).to(self.device)
         self.ref_embd = None
         self.scale = kwargs.get('scale', 1.0)
+        self.gradient = kwargs.get('gradient', False)
+        self.gradient_scale = kwargs.get('gradient_scale', 1.0)
 
     def set_ref_embeddings(self, ref, **kwargs):
         self.ref_embd = self.facenet(ref)
 
-    def get_reward(self, x):
+    def get_reward(self, x, **kwargs):
         """
         Compute the reward based on the cosine similarity of face embeddings.
 
@@ -236,21 +238,37 @@ class FacenetReward(RewardFn):
 
         embd = []
         embd_dim = self.ref_embd.shape[1]
-        
-        for n, xn in enumerate(x):
-            with torch.no_grad():
+        with torch.no_grad() if not self.gradient else torch.enable_grad():
+            for n, xn in enumerate(x):
                 zn = self.facenet(xn.unsqueeze(0))
 
-            if zn is not None:
-                embd.append(zn.squeeze(0))
-            else:
-                embd.append(torch.zeros(embd_dim).to(self.device))
+                if zn is not None:
+                    embd.append(zn.squeeze(0))
+                else:
+                    embd.append(torch.zeros(embd_dim).to(self.device))
 
-        embd = torch.stack(embd, dim=0)  # (1, 512) -> (N, 512)
+            embd = torch.stack(embd, dim=0)  # (1, 512) -> (N, 512)
 
-        difference = embd - self.ref_embd  # (N, 512)
-        loss = torch.linalg.norm(difference, dim=-1, ord=2) ** 2 
+            difference = embd - self.ref_embd  # (N, 512)
+            loss = torch.linalg.norm(difference, dim=-1, ord=2) ** 2 
         return -loss
+
+    
+    def get_reward_and_gradient(self, x, **kwargs):
+        """
+        Computes the loss between the generated image and the ground truth.
+
+        Args:
+            x (torch.Tensor): Generated image tensor.
+
+        Returns:
+            torch.Tensor: Computed reward value.
+            torch.Tensor: Gradient of the reward with respect to the input image.
+        """
+    
+        reward = self.get_reward(x)
+        grad = torch.autograd.grad(reward.sum(), x)[0]
+        return reward, grad
 
 
 @register_reward_method('adaface')
@@ -305,9 +323,17 @@ class AdaFaceReward(RewardFn):
         Returns:
             torch.Tensor: A tensor of shape B containing reward values.
         """
-        embd = self._embeddings(x)
-        difference = embd - self.ref_embd  # (N, 512)
-        loss = torch.linalg.norm(difference, dim=-1, ord=2) ** 2
+        enable_gradient = kwargs.get('enable_gradient', False)
+        if enable_gradient:
+            with torch.enable_grad():
+                embd = self._embeddings(x)
+                difference = embd - self.ref_embd  # (N, 512)
+                loss = torch.linalg.norm(difference, dim=-1, ord=2) ** 2
+        else:
+            embd = self._embeddings(x).detach()
+            difference = embd - self.ref_embd
+            loss = torch.linalg.norm(difference, dim=-1, ord=2) ** 2
+
         return -loss
     
 
@@ -322,11 +348,9 @@ class AdaFaceReward(RewardFn):
             torch.Tensor: Computed reward value.
             torch.Tensor: Gradient of the reward with respect to the input image.
         """
-
-        x.requires_grad_()        
-        reward = self.get_reward(x, **kwargs)
+    
+        reward = self.get_reward(x, enable_gradient=True)
         grad = torch.autograd.grad(reward.sum(), x)[0]
-        x.detach_()
         return reward, grad
     
 

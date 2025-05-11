@@ -14,7 +14,7 @@ singularity shell /mnt/lab_files/ECEN403-404/containers/cuda_10.2-cudnn7-py36.si
 
 # # Define seeds
 temps=(0.5)
-num_particles=(1)
+num_particles=(2)
 num_lookahead_steps=(1)
 resample_rates=(1)
 
@@ -22,22 +22,61 @@ resample_rates=(1)
 
 # # Loop through each seed
 
+# gradient
 python batched_ffhq_coarse_lookahead.py \
                         --model_config=configs/model_config.yaml \
                         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
-                        --task_config=configs/super_resolution_config.yaml \
-                        --reward_eval_config=configs/reward_adaface_gradient.yaml \
+                        --task_config=configs/motion_blur_config.yaml \
+                        --reward_eval_config=configs/reward_facenet_gradient.yaml \
                         --timestep=200 \
                         --scale=4 \
                         --method="mpgd_wo_proj" \
                         --num_lookahead_steps=1 \
-                        --save_dir='./outputs_test_gradient/' \
-                        --n_images=1 \
+                        --save_dir='./outputs_test_gradient_vs_search/' \
+                        --n_images=4 \
                         --temp=0.5 \
                         --num_particles=1 \
-                        --batch_size=1 \
+                        --batch_size=4 \
                         --resample_rate=1 \
                         --best_of_n \
+                        --seed=8 \
+
+# # search
+# python batched_ffhq_coarse_lookahead.py \
+#                         --model_config=configs/model_config.yaml \
+#                         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
+#                         --task_config=configs/motion_blur_config.yaml \
+#                         --reward_eval_config=configs/reward_facenet.yaml \
+#                         --timestep=200 \
+#                         --scale=4 \
+#                         --method="mpgd_wo_proj" \
+#                         --num_lookahead_steps=1 \
+#                         --save_dir='./outputs_test_gradient_vs_search/' \
+#                         --n_images=4 \
+#                         --temp=0.5 \
+#                         --num_particles=4 \
+#                         --batch_size=4 \
+#                         --resample_rate=1 \
+#                         --seed=8 \
+#                         # --best_of_n \
+
+
+# python batched_ffhq_coarse_lookahead.py \
+#                         --model_config=configs/model_config.yaml \
+#                         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
+#                         --task_config=configs/super_resolution_config.yaml \
+#                         --reward_eval_config=configs/reward_facenet.yaml \
+#                         --timestep=200 \
+#                         --scale=4 \
+#                         --method="mpgd_wo_proj" \
+#                         --num_lookahead_steps=1 \
+#                         --save_dir='./outputs_test_no_gradient/' \
+#                         --n_images=1 \
+#                         --temp=0.5 \
+#                         --num_particles=1 \
+#                         --batch_size=1 \
+#                         --resample_rate=1 \
+#                         --best_of_n \
 
 
 # for resample_rate in "${resample_rates[@]}"; do
