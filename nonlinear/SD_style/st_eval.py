@@ -87,7 +87,7 @@ class Evaluator:
         table.add_row(['avg' for _ in result_dicts.keys()])
         table.add_row(summary.values())
 
-        return table.get_string()
+        return table.get_string(), summary
 
     def log_wandb(self, result_dicts, batch_size):
         for s in range(batch_size):

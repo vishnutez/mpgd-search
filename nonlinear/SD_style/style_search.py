@@ -1,5 +1,6 @@
 import argparse, os, sys, glob
 import cv2
+import json
 import torch
 import numpy as np
 from omegaconf import OmegaConf
@@ -366,8 +367,10 @@ def main():
     # sample_path = os.path.join(outpath, f"{timestamp}_ddim{opt.ddim_steps}_tt{opt.tt}_rho{opt.rho}")
 
     sample_path = os.path.join(outpath, f"{timestamp}_{search_algo_name}")
+    metrics_path = os.path.join(sample_path, 'metrics')
     
     os.makedirs(sample_path, exist_ok=True)
+    os.makedirs(metrics_path, exist_ok=True)
     base_count = len(os.listdir(sample_path))
     grid_count = len(os.listdir(outpath)) - 1
 
@@ -438,9 +441,12 @@ def main():
                     x_checked_image_torch = torch.from_numpy(x_checked_image).permute(0, 3, 1, 2)
 
                     for n, x_sample in enumerate(x_checked_image_torch):
-                        results = evaluator.report(gt=ref, pred=x_sample, batch_size=1)
-                        markdown_text = evaluator.display(results)
+                        results = evaluator.report(gt=ref, x=x_sample.unsqueeze(0), text=opt.prompt)
+                        markdown_text, metrics = evaluator.display(results)
                         markdown_table += '\n' + markdown_text
+
+                        # jump metrics to json
+                        json.dump(metrics, open(os.path.join(metrics_path, f"{'.'.join(filename.split('.')[:-1])}_metrics_{file_id}_{n}.json"), 'w'), indent=4)
 
 
                         x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
