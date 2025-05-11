@@ -13,10 +13,10 @@
 singularity shell /mnt/lab_files/ECEN403-404/containers/cuda_10.2-cudnn7-py36.sif
 
 # # Define seeds
-temps=(0.5)
+temps=(0.05)
 num_particles=(2 4 8 16)
 num_lookahead_steps=(1)
-resample_rates=(1)
+resample_rates=(4)
 
 # # Define the style reference path
 
@@ -31,11 +31,11 @@ for resample_rate in "${resample_rates[@]}"; do
                         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
                         --task_config=configs/box_inpainting_det_full_images.yaml \
                         --reward_eval_config=configs/reward_adaface.yaml \
-                        --timestep=200 \
+                        --timestep=100 \
                         --scale=4 \
                         --method="mpgd_wo_proj" \
                         --num_lookahead_steps=$num_lookahead_step \
-                        --save_dir='./outputs_final_results_for_paper/' \
+                        --save_dir='./outputs_final_paper_mpgd_vs_search/' \
                         --n_images=70 \
                         --temp=$temp  \
                         --num_particles=$num_particle \
@@ -51,5 +51,7 @@ for resample_rate in "${resample_rates[@]}"; do
         done
     done
 done
+
+
 
 
