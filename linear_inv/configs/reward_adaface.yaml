@@ -2,7 +2,3 @@
   scale: 1
   device: cuda:0
   pretrained_model: 'ir_50'
-
-# - name: measurement
-#   scale: 100
-#   device: cuda:0

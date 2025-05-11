@@ -22,43 +22,62 @@ resample_rates=(1)
 
 # # Loop through each seed
 
-# gradient
-python batched_ffhq_coarse_lookahead.py \
-                        --model_config=configs/model_config.yaml \
-                        --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
-                        --task_config=configs/motion_blur_config.yaml \
-                        --reward_eval_config=configs/reward_facenet_gradient.yaml \
-                        --timestep=200 \
-                        --scale=4 \
-                        --method="mpgd_wo_proj" \
-                        --num_lookahead_steps=1 \
-                        --save_dir='./outputs_test_gradient_vs_search/' \
-                        --n_images=4 \
-                        --temp=0.5 \
-                        --num_particles=1 \
-                        --batch_size=4 \
-                        --resample_rate=1 \
-                        --best_of_n \
-                        --seed=8 \
-
-# # search
+# # gradient
 # python batched_ffhq_coarse_lookahead.py \
 #                         --model_config=configs/model_config.yaml \
 #                         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
-#                         --task_config=configs/motion_blur_config.yaml \
-#                         --reward_eval_config=configs/reward_facenet.yaml \
-#                         --timestep=200 \
+#                         --task_config=configs/gaussian_deblur_config.yaml \
+#                         --reward_eval_config=configs/reward_facenet_gradient.yaml \
+#                         --timestep=100 \
 #                         --scale=4 \
 #                         --method="mpgd_wo_proj" \
 #                         --num_lookahead_steps=1 \
 #                         --save_dir='./outputs_test_gradient_vs_search/' \
 #                         --n_images=4 \
 #                         --temp=0.5 \
-#                         --num_particles=4 \
+#                         --num_particles=1 \
 #                         --batch_size=4 \
 #                         --resample_rate=1 \
-#                         --seed=8 \
-#                         # --best_of_n \
+#                         --best_of_n \
+#                         --seed=42 \
+
+# # search
+python batched_ffhq_coarse_lookahead.py \
+                        --model_config=configs/model_config.yaml \
+                        --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
+                        --task_config=configs/super_resolution_config.yaml \
+                        --reward_eval_config=configs/reward_adaface.yaml \
+                        --timestep=100 \
+                        --scale=4 \
+                        --method="mpgd_wo_proj" \
+                        --num_lookahead_steps=1 \
+                        --save_dir='./outputs_test_og/' \
+                        --n_images=4 \
+                        --temp=0.1 \
+                        --num_particles=1 \
+                        --batch_size=4 \
+                        --resample_rate=2 \
+                        --seed=42 \
+                        --best_of_n \
+                        # --end_resample=0.95 \
+                        # --perform_lookahead \
+
+python batched_ffhq_coarse_lookahead.py \
+                        --model_config=configs/model_config.yaml \
+                        --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
+                        --task_config=configs/super_resolution_config.yaml \
+                        --reward_eval_config=configs/reward_adaface.yaml \
+                        --timestep=100 \
+                        --scale=4 \
+                        --method="mpgd_wo_proj" \
+                        --num_lookahead_steps=1 \
+                        --save_dir='./outputs_test_search/' \
+                        --n_images=4 \
+                        --temp=0.05 \
+                        --num_particles=4 \
+                        --batch_size=4 \
+                        --resample_rate=4 \
+                        
 
 
 # python batched_ffhq_coarse_lookahead.py \

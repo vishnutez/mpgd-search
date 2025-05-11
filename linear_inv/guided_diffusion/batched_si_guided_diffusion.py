@@ -591,7 +591,8 @@ class DDIMx0(SpacedDiffusion):
                       record_inside_la=False,
                       num_particles=1,
                       jump_size=1,
-                      jump_la=False):
+                      jump_la=False,
+                      end_resample=1):
         """
         The function used for sampling from noise.
         """ 
@@ -653,7 +654,7 @@ class DDIMx0(SpacedDiffusion):
             forward_step = self.num_timesteps - 1 - idx
 
             # resample to pick where to start
-            if search_algo is not None and forward_step % search_algo.resample_rate == 0:
+            if search_algo is not None and forward_step % search_algo.resample_rate == 0 and forward_step < end_resample*self.num_timesteps:
                 # if num_lookahead_steps == 1:
                 #     x0_sample = x_0_hat.clone()
                 # else:
@@ -718,7 +719,10 @@ class DDIMx0(SpacedDiffusion):
 
                 
                 resampled_idxs = search_algo.search(rewards=rewards, step=forward_step)
-                x_0_hat = x_0_hat[resampled_idxs]  # resample idxs
+
+                x_0_hat = x_0_hat[resampled_idxs]  # resample idxs  clone the x_0_hat
+                eps = eps[resampled_idxs]  # resample idxs clone the eps
+
 
             with torch.enable_grad():
                 x_0_hat = x_0_hat.requires_grad_()

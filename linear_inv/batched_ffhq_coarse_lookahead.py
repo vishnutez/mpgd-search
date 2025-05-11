@@ -81,6 +81,7 @@ def main():
     parser.add_argument('--record_inside_la', action='store_true', help='Record the lookahead samples')
     parser.add_argument('--jump_size', type=int, default=1)
     parser.add_argument('--jump_la', action='store_true', help='Use jump lookahead')
+    parser.add_argument('--end_resample', type=float, default=0.9)
 
     args = parser.parse_args()
    
@@ -148,6 +149,7 @@ def main():
     search_algo_config['num_particles'] = args.num_particles  # change the number of particles
     search_algo_config['init_temp'] = args.temp  # change the init temp
     search_algo_config['resample_rate'] = args.resample_rate  # change the resample rate
+    search_algo_config['num_steps'] = args.timestep  # change the number of lookahead steps
     search_algo = get_search_algo(**search_algo_config)  # fixed
     num_particles = search_algo_config['num_particles']
 
@@ -264,6 +266,7 @@ def main():
         markdown_table += f'- **{key}**: {value} \n'
     markdown_table += f' \n \n'
 
+    avg = {}
         
     # Do Inference
     for i, ref_img in enumerate(loader):
@@ -315,7 +318,8 @@ def main():
                            num_particles=num_particles,
                            record_inside_la=args.record_inside_la,
                            jump_size=args.jump_size,
-                           jump_la=args.jump_la,)
+                           jump_la=args.jump_la,
+                           end_resample=args.end_resample,)
 
     
         # images.append(ref_img)  # 1, 3, img_size, img_size
@@ -342,6 +346,13 @@ def main():
         best_markdown_text, summary_metrics = evaluator.display(best_results)    
         markdown_table += '\n \n \n best results \n' + best_markdown_text
 
+        for key, value in summary_metrics.items():
+                print('key:', key)
+                print('value:', value)
+                if key not in avg:
+                    avg[key] = []
+                avg[key].append(float(value))
+
         import json
         # log the evaluation metrics
         eval_file_path = os.path.join(out_path, 'metrics_md', f'img_{i}.md')
@@ -350,6 +361,13 @@ def main():
         json.dump(summary_metrics, open(os.path.join(out_path, 'metrics_json', f'img_{i}.json'), 'w'), indent=4)
 
     
+    # calculate the average of each key
+    for key, value in avg.items():
+        avg[key] = sum(value) / len(value)
+
+    with open(os.path.join(out_path, 'metrics_json', 'avg_metrics.json'), 'w') as f:
+        json.dump(avg, f, indent=4)
+
     # images = torch.cat(images, dim=0)  # n_images, 3, img_size, img_size
     # samples = torch.cat(samples, dim=0)  # n_images, num_groups, num_particles, 3, img_size, img_size
     # best_samples = torch.cat(best_samples, dim=0)  # n_images, num_groups, 3, img_size, img_size
