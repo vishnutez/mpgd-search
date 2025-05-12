@@ -592,7 +592,8 @@ class DDIMx0(SpacedDiffusion):
                       num_particles=1,
                       jump_size=1,
                       jump_la=False,
-                      end_resample=1):
+                      end_resample=1,
+                      cond_scale=4.0):
         """
         The function used for sampling from noise.
         """ 
@@ -733,8 +734,8 @@ class DDIMx0(SpacedDiffusion):
                 for reward_name, reward in reward_eval.items():
                     print('taking gradients')
                     if reward.gradient and (forward_step > 0.3*self.num_timesteps and forward_step < 0.7*self.num_timesteps):  # take gradients only in the middle
-                        reward_val, grad = reward.get_reward_and_gradient(x=x_0_hat)  # compute gradient wrt x0_hat not x0_t/y
-                        x0_t = x0_t + reward.gradient_scale * grad / alpha_bar_prev.sqrt()
+                        reward_val, grad = reward.get_gradient(x=x_0_hat)  # compute gradient wrt x0_hat not x0_t/y
+                        x0_t = x0_t + cond_scale * reward.gradient_scale * grad / alpha_bar_prev.sqrt()
                     x0_t.detach()
 
             

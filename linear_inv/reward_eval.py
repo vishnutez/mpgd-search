@@ -254,7 +254,7 @@ class FacenetReward(RewardFn):
         return -loss
 
     
-    def get_reward_and_gradient(self, x, **kwargs):
+    def get_gradient(self, x, **kwargs):
         """
         Computes the loss between the generated image and the ground truth.
 
@@ -268,7 +268,7 @@ class FacenetReward(RewardFn):
     
         reward = self.get_reward(x)
         grad = torch.autograd.grad(reward.sum(), x)[0]
-        return reward, grad
+        return grad
 
 
 @register_reward_method('adaface')
@@ -323,35 +323,92 @@ class AdaFaceReward(RewardFn):
         Returns:
             torch.Tensor: A tensor of shape B containing reward values.
         """
-        enable_gradient = kwargs.get('enable_gradient', False)
-        if enable_gradient:
-            with torch.enable_grad():
-                embd = self._embeddings(x)
-                difference = embd - self.ref_embd  # (N, 512)
-                loss = torch.linalg.norm(difference, dim=-1, ord=2) ** 2
-        else:
-            embd = self._embeddings(x).detach()
+
+        with torch.no_grad():
+            embd = self._embeddings(x)
             difference = embd - self.ref_embd
             loss = torch.linalg.norm(difference, dim=-1, ord=2) ** 2
-
         return -loss
-    
+        
 
-    def get_reward_and_gradient(self, x, **kwargs):
+    def get_gradient(self, x: torch.Tensor, **kwargs) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Computes the loss between the generated image and the ground truth.
+        Args
+        ----
+        x : (B, C, H, W) tensor in [-1, 1] **with** requires_grad=True.
 
-        Args:
-            x (torch.Tensor): Generated image tensor.
-
-        Returns:
-            torch.Tensor: Computed reward value.
-            torch.Tensor: Gradient of the reward with respect to the input image.
+        Returns
+        -------
+        distances : (B,)  L2 distances to `self.gt_embeddings`
+        grads      : (B, C, H, W)  ∂distance/∂pixel  (same device as images)
         """
-    
-        reward = self.get_reward(x, enable_gradient=True)
-        grad = torch.autograd.grad(reward.sum(), x)[0]
-        return reward, grad
+
+        images = x
+        B, C, H, W = images.shape
+        images = images.clone().detach().requires_grad_(True)
+
+        # ------------------------------------------------------------------
+        # 1. Detect faces (no grad)
+        # ------------------------------------------------------------------
+        to_pil = transforms.ToPILImage()
+        bboxes, failed = [], []
+
+        for i in range(B):
+            img_uint8 = ((images[i].detach() + 1) * 127.5).clamp(0, 255).byte().cpu()
+            pil_img = to_pil(img_uint8)
+            boxes, _ = self.mtcnn_model.align_multi(pil_img, limit=1)
+
+            if len(boxes) == 0:  # fallback → use whole frame
+                failed.append(i)
+                print(30 * '*', flush=True)
+                print('no face detected', flush=True)
+                print(30 * '*', flush=True)
+                bboxes.append(None)
+            else:
+                x1, y1, x2, y2 = boxes[0][:4].astype(int)
+                # Clamp to valid range
+                x1, y1 = max(x1, 0), max(y1, 0)
+                x2, y2 = min(x2, W - 1), min(y2, H - 1)
+                bboxes.append((x1, y1, x2, y2))
+
+        # ------------------------------------------------------------------
+        # 2. Differentiable crop → ( B , 3 , 112 , 112 )
+        # ------------------------------------------------------------------
+        face_tensors = []
+        for i, bb in enumerate(bboxes):
+            if bb is None:
+                crop = torch.zeros((1, 3, 112, 112), device=images.device)
+                print('returning zero gradient for no face', flush=True)
+            else:
+                x1, y1, x2, y2 = bb
+                crop = images[i: i + 1, :, y1: y2 + 1, x1: x2 + 1]  # keeps grad
+                crop = F.interpolate(crop, size=(112, 112),
+                                     mode='bilinear', align_corners=False)
+            face_tensors.append(crop)
+
+        faces = torch.cat(face_tensors, dim=0)  # (B, 3, 112, 112)
+
+        # ------------------------------------------------------------------
+        # 3. Embeddings
+        # ------------------------------------------------------------------
+        embeds, _ = self.model(faces)  # (B, D)
+
+        # ------------------------------------------------------------------
+        # 4. L2 distance to reference embedding
+        # ------------------------------------------------------------------
+        if self.ref_embd is None:
+            raise RuntimeError("Call set_ref_embeddings(...) first.")
+        # distances = torch.norm(embeds - self.gt_embeddings, dim=1)  # (B,)
+        distances = ((embeds - self.ref_embd) ** 2).sum(dim=1)
+
+        # ------------------------------------------------------------------
+        # 5. Back‑prop to get ∂distance/∂image
+        # ------------------------------------------------------------------
+        images.grad = None  # clear old grads
+        distances.sum().backward()
+        grads = images.grad.detach()  # (B, C, H, W)
+
+        return grads
     
 
     def set_ref_embeddings(self, ref, **kwargs) -> None:

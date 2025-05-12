@@ -176,7 +176,7 @@ class ResampleSearch(Search):
             return resampled_idxs
 
 
-@register_search_method('group-meeting')
+gister_search_method('group-meeting')
 class GroupMeetingSearch(Search):
     """
     GroupMeetingSearch is a search-based guidance method that selects particles based on
@@ -188,7 +188,7 @@ class GroupMeetingSearch(Search):
         base (int): Base step size to determine when resampling occurs.
         min_group (int): Minimum group size used in group-based resampling.
     """
-    def __init__(self, num_particles: int, base: int, min_group: int, normalizing_factor=100):
+    def __init__(self, num_particles: int, num_steps: int, resample_rate: int, annealing: str, **kwargs):
         """
         Initializes the GroupMeetingSearch object.
 
@@ -197,12 +197,11 @@ class GroupMeetingSearch(Search):
             base (int): Base frequency at which resampling groups increase in size.
             min_group (int): Minimum size of each group.
         """
-        super().__init__(num_particles)
+        super().__init__(num_particles, num_steps, resample_rate, annealing, **kwargs)
         if num_particles & (num_particles - 1):
             raise ValueError('num_particles must be a power of 2')
-        self.base = base
-        self.min_group = min_group
-        self.normalizing_factor = normalizing_factor
+        self.min_group = kwargs.get('min_group', 2)
+
 
     def search(self, rewards: torch.Tensor, step: int, **kwargs) -> np.ndarray:
         """
@@ -216,8 +215,44 @@ class GroupMeetingSearch(Search):
         Returns:
             np.ndarray: Array of selected particle indices after resampling.
         """
-        if step % self.base != 0 or step == 0:
-            return np.arange(self.num_particles)
+        batch_size = rewards.shape[0]
+        resampled_idxs = np.arange(batch_size)
+        print(f"resampled_idxs: {resampled_idxs}")
+
+        if step % self.resample_rate != 0 or step == 0:
+            return resampled_idxs
+        else:
+            print('resampling')
+            
+            temp = self.annealing_schedule[step // self.resample_rate]
+
+            print('temp:', temp)
+
+            # normalize the rewards
+            rewards = rewards.cpu().detach().numpy()
+            norm_rewards = np.zeros_like(rewards)
+
+            values = np.zeros(batch_size)
+
+            group_size = min(((step // self.resample_rate) & -(step // self.resample_rate)) * self.min_group, self.num_particles)  # max_group_size is num_particles
+            
+
+            for i in range(0, len(rewards), group_size):
+
+
+                norm_rewards[i: i + group_size] = (rewards[i: i + group_size] - np.max(rewards[i: i + group_size]))
+
+                values[i: i + group_size] = np.exp(norm_rewards[i: i + group_size] / temp)
+                p = values[i: i + group_size]  / np.sum(values[i: i + group_size])
+
+                print(f"p: {p}")
+                # resample based on values
+                resampled_idxs[i: i + group_size] = np.random.choice(np.arange(i, i + group_size),
+                                                                              p=p, size=group_size, replace=True)
+
+            print(f"resampled_idxs: {resampled_idxs}")
+            return resampled_idxs
+
 
         rewards = rewards.cpu().detach().numpy()
         normalized_distances = 1 - (rewards - np.min(rewards)) / (np.max(rewards) - np.min(rewards) + 1e-8)
@@ -232,6 +267,65 @@ class GroupMeetingSearch(Search):
                 list(range(i, i + group_size)), p=scores[i: i + group_size], size=group_size, replace=True
             )
         return selected_idxs.astype(int)
+
+
+# # prev version
+# @register_search_method('group-meeting')
+# class GroupMeetingSearch(Search):
+#     """
+#     GroupMeetingSearch is a search-based guidance method that selects particles based on
+#     reward scores within local groups. It uses a hierarchical grouping strategy controlled
+#     by `base` and `min_group` to decide group sizes dynamically over time.
+
+#     Attributes:
+#         num_particles (int): Number of particles to track.
+#         base (int): Base step size to determine when resampling occurs.
+#         min_group (int): Minimum group size used in group-based resampling.
+#     """
+#     def __init__(self, num_particles: int, base: int, min_group: int, normalizing_factor=100):
+#         """
+#         Initializes the GroupMeetingSearch object.
+
+#         Args:
+#             num_particles (int): Number of particles to maintain. Must be a power of 2.
+#             base (int): Base frequency at which resampling groups increase in size.
+#             min_group (int): Minimum size of each group.
+#         """
+#         super().__init__(num_particles)
+#         if num_particles & (num_particles - 1):
+#             raise ValueError('num_particles must be a power of 2')
+#         self.base = base
+#         self.min_group = min_group
+#         self.normalizing_factor = normalizing_factor
+
+#     def search(self, rewards: torch.Tensor, step: int, **kwargs) -> np.ndarray:
+#         """
+#         Performs group-wise resampling of particle indices based on their reward scores.
+
+#         Args:
+#             rewards (torch.Tensor): Reward values for each particle at the current step.
+#             step (int): Current time step in the sampling process.
+#             **kwargs: Additional unused keyword arguments.
+
+#         Returns:
+#             np.ndarray: Array of selected particle indices after resampling.
+#         """
+#         if step % self.base != 0 or step == 0:
+#             return np.arange(self.num_particles)
+
+#         rewards = rewards.cpu().detach().numpy()
+#         normalized_distances = 1 - (rewards - np.min(rewards)) / (np.max(rewards) - np.min(rewards) + 1e-8)
+#         scores = np.exp(-self.normalizing_factor * normalized_distances ** 2)
+
+#         group_size = min(((step // self.base) & -(step // self.base)) * self.min_group, len(scores))
+#         selected_idxs = np.zeros(self.num_particles, dtype=int)
+
+#         for i in range(0, self.num_particles, group_size):
+#             scores[i: i + group_size] = scores[i: i + group_size] / np.sum(scores[i: i + group_size])
+#             selected_idxs[i: i + group_size] = np.random.choice(
+#                 list(range(i, i + group_size)), p=scores[i: i + group_size], size=group_size, replace=True
+#             )
+#         return selected_idxs.astype(int)
 
 
 @register_search_method('FK-steering')

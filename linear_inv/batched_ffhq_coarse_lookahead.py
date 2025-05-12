@@ -164,7 +164,7 @@ def main():
     if args.best_of_n:
         dir_path += f"_best_of_n_{num_particles}"
     else:
-        dir_path += f"_resample_n_{num_particles}"
+        dir_path += f"_{search_algo_config['name']}_n_{num_particles}"
 
     if args.perform_lookahead:
         if args.conditional_lookahead:
@@ -319,7 +319,8 @@ def main():
                            record_inside_la=args.record_inside_la,
                            jump_size=args.jump_size,
                            jump_la=args.jump_la,
-                           end_resample=args.end_resample,)
+                           end_resample=args.end_resample,
+                           cond_scale=args.scale)
 
     
         # images.append(ref_img)  # 1, 3, img_size, img_size

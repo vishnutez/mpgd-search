@@ -25,7 +25,7 @@ for eta in "${etas[@]}"; do
         python batched_ffhq_coarse_lookahead.py \
             --model_config=configs/model_config.yaml \
             --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
-            --task_config=configs/super_resolution_4x_config_full_images.yaml \
+            --task_config=configs/box_inpainting_det_full_images.yaml \
             --reward_eval_config=configs/reward_adaface.yaml \
             --timestep=100 \
             --scale=4 \

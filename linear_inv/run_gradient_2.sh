@@ -19,7 +19,7 @@ source activate mpgd
 temps=(0.05)
 num_particles=(2 4 8 16)
 num_lookahead_steps=(1)
-resample_rates=(2 4 8)
+resample_rates=(4 8)
 
 # # Define the style reference path
 
@@ -36,10 +36,9 @@ for resample_rate in "${resample_rates[@]}"; do
                         --reward_eval_config=configs/reward_adaface.yaml \
                         --timestep=100 \
                         --scale=4 \
-                        --eta=1.0 \
                         --method="mpgd_wo_proj" \
                         --num_lookahead_steps=$num_lookahead_step \
-                        --save_dir='./outputs_final_paper_mpgd_vs_search/' \
+                        --save_dir='./outputs_final_paper_mpgd_vs_grad/' \
                         --n_images=70 \
                         --temp=$temp  \
                         --num_particles=$num_particle \
