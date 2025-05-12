@@ -28,6 +28,7 @@ python3 ffhq_jump_lookahead.py \
             --save_dir='./outputs_jump_la/' \
             --n_images=10 \
             --temp=0.5 \
-            --num_particles=2
+            --num_particles=2 \
+            --best_of_n \
             # --ref_faces_path='./data/samples/' \
             # --best_of_n \

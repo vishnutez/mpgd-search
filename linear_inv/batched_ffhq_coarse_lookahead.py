@@ -82,6 +82,7 @@ def main():
     parser.add_argument('--jump_size', type=int, default=1)
     parser.add_argument('--jump_la', action='store_true', help='Use jump lookahead')
     parser.add_argument('--end_resample', type=float, default=0.9)
+    parser.add_argument('--gradient_scale', type=float, default=1.0)
 
     args = parser.parse_args()
    
@@ -145,6 +146,8 @@ def main():
     for reward_config in reward_configs:
         reward = get_reward_eval(**reward_config)
         reward_eval[reward_config['name']] = reward
+        reward.gradient_scale = args.gradient_scale  # set the gradient scale for the reward
+        print('reward grad scale:', reward.gradient_scale)
 
     search_algo_config['num_particles'] = args.num_particles  # change the number of particles
     search_algo_config['init_temp'] = args.temp  # change the init temp

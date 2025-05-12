@@ -176,7 +176,7 @@ class ResampleSearch(Search):
             return resampled_idxs
 
 
-gister_search_method('group-meeting')
+@register_search_method('group-meeting')
 class GroupMeetingSearch(Search):
     """
     GroupMeetingSearch is a search-based guidance method that selects particles based on
