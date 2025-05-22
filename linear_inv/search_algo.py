@@ -43,7 +43,6 @@ class Search(ABC):
  
         self.num_particles = num_particles
         self.num_steps = num_steps
-        self.num_resample_steps = int(num_steps / resample_rate)
         self.resample_rate = resample_rate
         self.annealing = annealing
         self.greedy = kwargs.get('greedy', False)
@@ -51,16 +50,16 @@ class Search(ABC):
         # create an annealing schedule over the number of resample steps
         if self.annealing == 'constant':
             init_temp = kwargs.get('init_temp', 1)
-            self.annealing_schedule = np.ones(self.num_resample_steps) * init_temp
+            self.annealing_schedule = np.ones(self.num_steps) * init_temp
         elif self.annealing == 'linear':
             init_temp = kwargs.get('init_temp', 10)
             final_temp = kwargs.get('final_temp', 0.1)
-            self.annealing_schedule = np.linspace(init_temp, final_temp, self.num_resample_steps)
+            self.annealing_schedule = np.linspace(init_temp, final_temp,self.num_steps)
         elif self.annealing == 'exponential':
             init_temp = kwargs.get('init_temp', 10)
             final_temp = kwargs.get('final_temp', 0.1)
             decay_time = kwargs.get('decay_time', 0.3)  # time constant of decay
-            t = np.arange(self.num_resample_steps) / self.num_resample_steps
+            t = np.arange(self.num_steps) / self.num_steps
             self.annealing_schedule = final_temp + (init_temp - final_temp) * np.exp(-t / decay_time)
             
 
@@ -290,7 +289,7 @@ class GroupMeetingSearchRecursive(GroupMeetingSearch):
         if step % resample_rate == 0:
             print('at the right step so resampling')
             
-            temp = self.annealing_schedule[0]
+            temp = self.annealing_schedule[step // self.resample_rate]
 
             # print('temp:', temp)
 

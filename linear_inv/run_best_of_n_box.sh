@@ -22,7 +22,7 @@ etas=(0.5 1.0)
 # # Loop through each seed
 for eta in "${etas[@]}"; do
     for num_particle in "${num_particles[@]}"; do
-        python batched_ffhq_coarse_lookahead.py \
+        python inference_time_mpgd.py \
             --model_config=configs/model_config.yaml \
             --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
             --task_config=configs/box_inpainting_det_full_images.yaml \
