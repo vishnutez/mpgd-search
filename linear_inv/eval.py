@@ -229,7 +229,7 @@ class FaceSimilarityL2(EvalFn):
         batch_size = self.batch_size
         results = []
         for start in range(0, gt.shape[0], batch_size):
-            res = self.facenet.compute_loss(gt[start:start+batch_size], pred[start:start+batch_size])
+            res = self.facenet.compute_loss(x_tilde=gt[start:start+batch_size], x=pred[start:start+batch_size])
             results.append(res)
         results = torch.cat(results, dim=0)
         return results
@@ -254,7 +254,7 @@ class AdaFaceSimilarityL2(EvalFn):
         batch_size = self.batch_size
         results = []
         for start in range(0, gt.shape[0], batch_size):
-            res = self.adaface.compute_loss(gt[start:start+batch_size], pred[start:start+batch_size])
+            res = self.adaface.compute_loss(gt=gt[start:start+batch_size], x=pred[start:start+batch_size])
             results.append(res)
         results = torch.cat(results, dim=0)
         return results

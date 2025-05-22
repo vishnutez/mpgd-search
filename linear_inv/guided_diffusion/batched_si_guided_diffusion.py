@@ -655,7 +655,7 @@ class DDIMx0(SpacedDiffusion):
             forward_step = self.num_timesteps - 1 - idx
 
             # resample to pick where to start
-            if search_algo is not None and forward_step % search_algo.resample_rate == 0 and forward_step < end_resample*self.num_timesteps:
+            if search_algo is not None and forward_step < end_resample*self.num_timesteps:
                 # if num_lookahead_steps == 1:
                 #     x0_sample = x_0_hat.clone()
                 # else:
@@ -702,18 +702,11 @@ class DDIMx0(SpacedDiffusion):
                     equals = (x0_sample == x_0_hat).all()
                     print('x0_sample == x_0_hat?: ', equals)
                 else:
-                    # print('not performing lookahead')
-                    # print('x0_sample is x_0_hat')
                     x0_sample = x_0_hat
 
                 rewards = 0
                 for reward_name, reward in reward_eval.items():
                     if hasattr(reward, 'get_reward'):
-                        # print('reward: ', reward)
-                        # print('x0_sample: ', x0_sample.shape)
-                        # print('x_0_hat: ', x_0_hat.shape)
-                        # print('measurement: ', measurement.shape)
-                        # print('ref_embd: ', reward_eval.ref_embd.shape)
                         curr_reward = reward.get_reward(x=x0_sample) / reward.scale
                         print(f'reward_name: {reward_name}, curr_reward: {curr_reward}, curr_scale: {reward.scale}')
                         rewards += curr_reward
@@ -732,9 +725,9 @@ class DDIMx0(SpacedDiffusion):
                                         at=alpha_bar_prev,
                                         t=t/self.num_timesteps)
                 for reward_name, reward in reward_eval.items():
-                    print('taking gradients')
                     if reward.gradient and (forward_step > 0.3*self.num_timesteps and forward_step < 0.7*self.num_timesteps):  # take gradients only in the middle
-                        reward_val, grad = reward.get_gradient(x=x_0_hat)  # compute gradient wrt x0_hat not x0_t/y
+                        print('taking gradients')
+                        grad = reward.get_gradient(x=x_0_hat)  # compute gradient wrt x0_hat not x0_t/y
                         x0_t = x0_t + cond_scale * reward.gradient_scale * grad / alpha_bar_prev.sqrt()
                     x0_t.detach()
 

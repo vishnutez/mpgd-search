@@ -15,7 +15,7 @@ module load WebProxy
 
 source activate mpgd
 
-grad_scales=(0.5 1 1.5)
+grad_scales=(0.1 0.25 0.5)
 
 # # Define the style reference path
 
@@ -25,7 +25,7 @@ for grad_scale in "${grad_scales[@]}"; do
         python batched_ffhq_coarse_lookahead.py \
         --model_config=configs/model_config.yaml \
         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
-        --task_config=configs/box_inpainting_det_full_images.yaml \
+        --task_config=configs/gaussian_deblur_config.yaml \
         --reward_eval_config=configs/reward_adaface_gradient.yaml \
         --timestep=100 \
         --scale=4 \

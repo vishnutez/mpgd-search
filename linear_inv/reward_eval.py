@@ -329,9 +329,9 @@ class AdaFaceReward(RewardFn):
             difference = embd - self.ref_embd
             loss = torch.linalg.norm(difference, dim=-1, ord=2) ** 2
         return -loss
-        
 
-    def get_gradient(self, x: torch.Tensor, **kwargs) -> Tuple[torch.Tensor, torch.Tensor]:
+
+    def get_gradient(self, x: torch.Tensor, **kwargs):
         """
         Args
         ----
@@ -398,6 +398,7 @@ class AdaFaceReward(RewardFn):
         # ------------------------------------------------------------------
         if self.ref_embd is None:
             raise RuntimeError("Call set_ref_embeddings(...) first.")
+            # self.ref_embd_shape = 512
         # distances = torch.norm(embeds - self.gt_embeddings, dim=1)  # (B,)
         distances = ((embeds - self.ref_embd) ** 2).sum(dim=1)
 
@@ -408,7 +409,7 @@ class AdaFaceReward(RewardFn):
         distances.sum().backward()
         grads = images.grad.detach()  # (B, C, H, W)
 
-        return grads
+        return -grads  # negative to indicate the grad is wrt to the reward which is neg of loss
     
 
     def set_ref_embeddings(self, ref, **kwargs) -> None:
@@ -452,7 +453,7 @@ class AdaFaceReward(RewardFn):
         batch_input = torch.cat(aligned_images, dim=0)  # Assuming dim=0 is batch
         embeddings, _ = self.model(batch_input)
         if failed_indices:
-            fallback = torch.ones((len(failed_indices), self.ref_embd.shape[1]), device=embeddings.device) * 1e3
+            fallback = torch.ones((len(failed_indices), 512), device=embeddings.device) * 1e3  # default embedding shape sis 512
             embeddings[torch.tensor(failed_indices, device=embeddings.device)] = fallback
 
         return embeddings

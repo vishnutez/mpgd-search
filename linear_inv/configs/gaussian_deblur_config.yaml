@@ -5,13 +5,13 @@ conditioning:
 
 data:
   name: ffhq
-  root: ./data/samples
+  root: ./data/images
 
 measurement:
   operator:
     name: gaussian_blur
     kernel_size: 61
-    intensity: 3.0
+    intensity: 5.0
   
   noise: 
     name: gaussian

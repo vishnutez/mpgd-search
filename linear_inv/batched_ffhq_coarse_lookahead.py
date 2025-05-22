@@ -253,6 +253,7 @@ def main():
     # add all the configs to the markdown table
     markdown_table = f'arguments: \n \n'
     for arg, value in vars(args).items():
+        print(f'- **{arg}**: {value} \n ')
         markdown_table += f'- **{arg}**: {value} \n '
 
     # print reward eval configs
@@ -261,11 +262,13 @@ def main():
         markdown_table += f'- **{reward_config["name"]}**: \n'
         for key, value in reward_config.items():
             if key != 'name':
+                print(f'  - {key}: {value} \n')
                 markdown_table += f'  - {key}: {value} \n'
     markdown_table += f' \n \n'
     # print search algo configs
     markdown_table += f' \n search algo configs: \n \n'
     for key, value in search_algo_config.items():
+        print(f'- **{key}**: {value} \n')
         markdown_table += f'- **{key}**: {value} \n'
     markdown_table += f' \n \n'
 
@@ -273,6 +276,24 @@ def main():
         
     # Do Inference
     for i, ref_img in enumerate(loader):
+
+        if measure_config['operator']['name'] == 'motion_blur':
+
+            print('generating random kernel for motion blur task')
+
+            np.random.seed(1000 * i + args.seed)  # set seed for kernel generation
+            operator = get_operator(device=device, **measure_config['operator'])
+            np.random.seed(args.seed)  # set seed for the rest of the code
+
+            kernel = operator.get_kernel()
+            kernel = kernel.to(device)
+            kernel = kernel.repeat(1, 3, 1, 1)  # (batch_size, 3, kernel_size, kernel_size)
+            print('kernel shape:', kernel.shape)
+
+            plt.imsave(os.path.join(out_path, 'label', f'{i:03}_ker.png'), clear_color(kernel))
+
+            print(f'saving kernel to label')
+
 
         ref_face_img = Image.open(ref_faces[i]).convert('RGB')
 
@@ -302,6 +323,8 @@ def main():
         plt.imsave(os.path.join(out_path, 'input', f'{i:03}_input.png'), clear_color(y_n))
         plt.imsave(os.path.join(out_path, 'label', f'{i:03}_label.png'), clear_color(ref_img))
         plt.imsave(os.path.join(out_path, 'guid', f'{i:03}_guid.png'), clear_color(ref_face_img))
+
+        
 
         # sample is of shape (batch_size, 3, img_size, img_size)
         # best_sample is of shape (batch_size // num_particles, 3, img_size, img_size)

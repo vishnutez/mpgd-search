@@ -16,30 +16,25 @@ module load WebProxy
 source activate mpgd
 
 # # Define seeds
-num_particles=(2 4 8 16)
-etas=(0.5 1.0)
+num_particles=(2 4 8)
 
-# # Loop through each seed
-for eta in "${etas[@]}"; do
-    for num_particle in "${num_particles[@]}"; do
-        python batched_ffhq_coarse_lookahead.py \
-            --model_config=configs/model_config.yaml \
-            --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
-            --task_config=configs/super_resolution_4x_config_full_images.yaml \
-            --reward_eval_config=configs/reward_adaface.yaml \
-            --timestep=100 \
-            --scale=4 \
-            --eta=$eta \
-            --method="mpgd_wo_proj" \
-            --num_lookahead_steps=1 \
-            --save_dir='./outputs_final_paper_mpgd_best_of_n/' \
-            --n_images=70 \
-            --temp=0.05 \
-            --num_particles=$num_particle \
-            --batch_size=32 \
-            --ref_faces_path='./data/additional_images/' \
-            --best_of_n 
-    done
+for num_particle in "${num_particles[@]}"; do
+    python batched_ffhq_coarse_lookahead.py \
+        --model_config=configs/model_config.yaml \
+        --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
+        --task_config=configs/gaussian_deblur_config.yaml \
+        --reward_eval_config=configs/reward_adaface.yaml \
+        --timestep=100 \
+        --scale=4 \
+        --method="mpgd_wo_proj" \
+        --num_lookahead_steps=1 \
+        --save_dir='./outputs_final_paper_mpgd_best_of_n/' \
+        --n_images=70 \
+        --temp=0.05 \
+        --num_particles=$num_particle \
+        --batch_size=8 \
+        --ref_faces_path='./data/additional_images/' \
+        --best_of_n 
 done
 
 
