@@ -20,7 +20,6 @@ plt.rcParams['font.size'] = 18
 # std_group_search = [0.08255740781987707, 0.07155963422209478, 0.08475121997416542]
 
 
-
 # name = 'gaussian_blur'
 # base = [1.02590625]
 # std_base = [0.06414624861157119]
@@ -52,10 +51,10 @@ std_group_search = [0.07695310913705422, 0.08160860765721958, 0.0915353722078758
 plt.plot([0] + x, base + best_of_n, label='BestOfN', color='firebrick', marker='o')
 plt.errorbar(x, best_of_n, yerr=std_best_of_n, color='firebrick', alpha=0.25)
 
-plt.plot([0] + x, base + search, label='GlobalSearch', color='steelblue', marker='o')
+plt.plot([0] + x, base + search, label='RKJSearch', color='steelblue', marker='o')
 plt.errorbar(x, search, yerr=std_search, color='steelblue', alpha=0.25)
 
-plt.plot([0] + x, base + group_search, label='GroupSearch', color='forestgreen', marker='o')
+plt.plot([0] + x, base + group_search, label='NaiveSearch', color='forestgreen', marker='o')
 plt.errorbar(x, group_search, yerr=std_group_search, color='forestgreen', alpha=0.25)
 
 plt.plot([0], base, label='MPGD', color='black', marker='o')

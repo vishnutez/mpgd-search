@@ -15,7 +15,7 @@ module load WebProxy
 
 source activate mpgd
 
-python batched_ffhq_coarse_lookahead.py \
+python inference_time_mpgd.py \
             --model_config=configs/model_config.yaml \
             --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
             --task_config=configs/gaussian_deblur_config.yaml \

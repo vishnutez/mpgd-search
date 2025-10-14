@@ -19,7 +19,7 @@ source activate mpgd
 num_particles=(2 4 8)
 
 for num_particle in "${num_particles[@]}"; do
-    python batched_ffhq_coarse_lookahead.py \
+    python inference_time_mpgd.py \
         --model_config=configs/model_config.yaml \
         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
         --task_config=configs/gaussian_deblur_config.yaml \

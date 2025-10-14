@@ -16,7 +16,7 @@ module load WebProxy
 source activate mpgd
 
 
-python batched_ffhq_coarse_lookahead.py \
+python inference_time_mpgd.py \
         --model_config=configs/model_config.yaml \
         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
         --task_config=configs/super_resolution_6x_config_full_images.yaml \
@@ -33,7 +33,7 @@ python batched_ffhq_coarse_lookahead.py \
         --ref_faces_path='./data/additional_images/' \
         --best_of_n \
 
-python batched_ffhq_coarse_lookahead.py \
+python inference_time_mpgd.py \
         --model_config=configs/model_config.yaml \
         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
         --task_config=configs/super_resolution_6x_config_full_images.yaml \
@@ -52,7 +52,7 @@ python batched_ffhq_coarse_lookahead.py \
         --gradient_scale=0.25 \
 
 
-python batched_ffhq_coarse_lookahead.py \
+python inference_time_mpgd.py \
         --model_config=configs/model_config.yaml \
         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
         --task_config=configs/super_resolution_6x_config_full_images.yaml \
@@ -69,7 +69,7 @@ python batched_ffhq_coarse_lookahead.py \
         --ref_faces_path='./data/additional_images/' \
         --best_of_n \
 
-python batched_ffhq_coarse_lookahead.py \
+python inference_time_mpgd.py \
         --model_config=configs/model_config.yaml \
         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
         --task_config=configs/super_resolution_6x_config_full_images.yaml \
@@ -86,7 +86,7 @@ python batched_ffhq_coarse_lookahead.py \
         --resample_rate=8 \
         --ref_faces_path='./data/additional_images/' 
 
-python batched_ffhq_coarse_lookahead.py \
+python inference_time_mpgd.py \
         --model_config=configs/model_config.yaml \
         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
         --task_config=configs/super_resolution_6x_config_full_images.yaml \

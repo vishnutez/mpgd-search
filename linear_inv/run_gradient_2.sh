@@ -29,7 +29,7 @@ for resample_rate in "${resample_rates[@]}"; do
     for temp in "${temps[@]}"; do
         for num_lookahead_step in "${num_lookahead_steps[@]}"; do
             for num_particle in "${num_particles[@]}"; do
-                        python batched_ffhq_coarse_lookahead.py \
+                        python inference_time_mpgd.py \
                         --model_config=configs/model_config.yaml \
                         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
                         --task_config=configs/super_resolution_4x_config_full_images.yaml \

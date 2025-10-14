@@ -24,7 +24,7 @@
 #     for num_lookahead_step in "${num_lookahead_steps[@]}"; do
 #         for temp in "${temps[@]}"; do
 
-python ffhq_lookahead_search.py \
+python inference_time_mpgd.py \
     --model_config=configs/model_config.yaml \
     --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
     --task_config=configs/super_resolution_config.yaml \

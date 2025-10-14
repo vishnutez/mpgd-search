@@ -42,7 +42,7 @@ resample_rates=(1)
 #                         --seed=42 \
 
 # # search
-python batched_ffhq_coarse_lookahead.py \
+python inference_time_mpgd.py \
                         --model_config=configs/model_config.yaml \
                         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
                         --task_config=configs/super_resolution_config.yaml \
@@ -62,7 +62,7 @@ python batched_ffhq_coarse_lookahead.py \
                         # --end_resample=0.95 \
                         # --perform_lookahead \
 
-python batched_ffhq_coarse_lookahead.py \
+python inference_time_mpgd.py \
                         --model_config=configs/model_config.yaml \
                         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
                         --task_config=configs/super_resolution_config.yaml \
@@ -80,7 +80,7 @@ python batched_ffhq_coarse_lookahead.py \
                         
 
 
-# python batched_ffhq_coarse_lookahead.py \
+# python inference_time_mpgd.py \
 #                         --model_config=configs/model_config.yaml \
 #                         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
 #                         --task_config=configs/super_resolution_config.yaml \
@@ -102,7 +102,7 @@ python batched_ffhq_coarse_lookahead.py \
 #     for temp in "${temps[@]}"; do
 #         for num_lookahead_step in "${num_lookahead_steps[@]}"; do
 #             for num_particle in "${num_particles[@]}"; do
-#                         python batched_ffhq_coarse_lookahead.py \
+#                         python inference_time_mpgd.py \
 #                         --model_config=configs/model_config.yaml \
 #                         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
 #                         --task_config=configs/box_inpainting_det.yaml \
@@ -128,7 +128,7 @@ python batched_ffhq_coarse_lookahead.py \
 # done
 
 # for num_particle in "${num_particles[@]}"; do
-#         python batched_ffhq_coarse_lookahead.py \
+#         python inference_time_mpgd.py \
 #         --model_config=configs/model_config.yaml \
 #         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
 #         --task_config=configs/super_resolution_config.yaml \
@@ -151,7 +151,7 @@ python batched_ffhq_coarse_lookahead.py \
 # done
 
 
-# python batched_ffhq_coarse_lookahead.py \
+# python inference_time_mpgd.py \
 #         --model_config=configs/model_config.yaml \
 #         --diffusion_config=configs/mpgd_diffusion_search_config.yaml \
 #         --task_config=configs/super_resolution_config.yaml \

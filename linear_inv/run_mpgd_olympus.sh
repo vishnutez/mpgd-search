@@ -12,7 +12,7 @@
 # # select your singularity shell (currently cuda10.2-cudnn7-py36)
 # singularity shell /mnt/lab_files/ECEN403-404/containers/cuda_10.2-cudnn7-py36.sif
 
-python ffhq_sample_condition.py \
+python inference_time_mpgd.py \
     --model_config=configs/model_config.yaml \
     --diffusion_config=configs/mpgd_diffusion_config.yaml \
     --task_config=configs/super_resolution_config.yaml \
